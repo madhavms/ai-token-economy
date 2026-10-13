@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-token-economy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Make an AI coding budget last the month: offline spend reports, settings and hooks for Claude Code and Codex."
 readme = "README.md"
 license = {text = "MIT"}
@@ -18,4 +18,4 @@ tke = "token_economy.cli:main"
 packages = ["token_economy"]
 
 [tool.setuptools.package-data]
-token_economy = ["templates/*"]
+token_economy = ["templates/*", "web/*"]

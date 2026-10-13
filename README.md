@@ -40,6 +40,22 @@ python3 tke.py setup --apply                       # apply them, with backups
 
 On Windows use `py tke.py ...`. To get a `tke` command instead, `pip install .` from the clone.
 
+## The control centre
+
+```bash
+python3 tke.py ui
+```
+
+Opens a local dashboard at http://127.0.0.1:8790 (the next free port if that one is taken). It reads the same logs, binds to your machine only, and never calls a model.
+
+- **Overview:** each budget with a "where you should be by today" marker, today against your daily allowance, the run-out date, spend per day against the allowance, where the money went with the fix for each leak, and the costliest sessions.
+- **Sessions:** click a session to see every call: how big the prompt was, where it crossed 150k tokens, where the cache went cold after a break, and the running cost. It then says in plain words what would have saved money, for example: *"The prompt passed 150k tokens at call 10. Every call after that re-read it: $142 (79% of this session)."*
+- **Setup health:** checks your Claude Code and Codex settings (cache lifetime, default model and effort, subagent model, Explore agent, hooks, compaction backstop, Codex model and profiles), explains each gap, and applies the fix with one click. Backups are made and your own values are kept unless you tick the box.
+- **Plan a task:** the routing questions and a cost estimate for a session before you start it.
+- **Budget:** edit your monthly budgets in place.
+
+Changes made from the page need a per-launch token that only the page receives, and requests from any host other than localhost are refused.
+
 ## Commands
 
 | Command | What it does |
@@ -51,6 +67,7 @@ On Windows use `py tke.py ...`. To get a `tke` command instead, `pip install .` 
 | `tke route` | Three yes/no questions, then the lane and the exact command: `claude --model ...` or `codex --profile ...`. |
 | `tke estimate --model claude-opus-5-5 --calls 110 --start 32 --end 290 --breaks 5` | Price a session before you run it. |
 | `tke bench <source-dir> gpt-oss:20b` | Time a local Ollama model reading an agent-sized prompt, GPU on and off, to see whether local is usable on this machine. |
+| `tke ui` | The local control centre (see above). |
 | `tke uninstall --apply` | Remove tke's hooks and status line from Claude Code. |
 
 ## What `setup` changes

@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tke · Token Control Centre</title>
+<style>
+:root{
+  --bg:#f4f6fa; --card:#ffffff; --panel:#eef2f8; --ink:#14213d; --ink2:#3d4b66; --muted:#6a7891; --line:#d7deea;
+  --accent:#2a5bd7; --good:#1f8a5b; --warn:#c77a00; --bad:#c43c2d; --read:#2a78d6; --write:#1baf7a; --rebuild:#eb6834; --out:#eda100;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1420; --card:#171e2d; --panel:#1d2638; --ink:#e7ecf5; --ink2:#c2cbdb; --muted:#8e9ab0; --line:#2a3548;
+  --accent:#6f9bff; --good:#4cc38a; --warn:#f0b13a; --bad:#ff7a6b; --read:#3987e5; --write:#199e70; --rebuild:#d95926; --out:#c98500; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans)}
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;letter-spacing:.02em}
+header .sub{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer;min-height:36px}
+nav button[aria-current="page"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.spacer{flex:1}
+main{max-width:1180px;margin:0 auto;padding:20px;display:flex;flex-direction:column;gap:18px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.big{font-size:28px;font-weight:650;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid currentColor}
+.chip.good{color:var(--good)} .chip.warn{color:var(--warn)} .chip.bad{color:var(--bad)}
+.meter{position:relative;height:12px;background:var(--panel);border-radius:6px;margin:10px 0 6px;overflow:visible}
+.meter .fill{position:absolute;inset:0 auto 0 0;border-radius:6px;background:var(--accent)}
+.meter .mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv b{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--panel)}
+.scroll{overflow-x:auto}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;margin:1px 3px 1px 0;border-radius:4px;background:var(--panel);color:var(--ink2)}
+.tag.hot{background:color-mix(in srgb,var(--rebuild) 22%,transparent);color:var(--ink)}
+.leak{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.leak:last-child{border-bottom:0}
+.leak .fix{grid-column:1/-1;color:var(--ink2);font-size:13px}
+.bar2{height:8px;border-radius:4px;background:var(--panel);grid-column:1/-1;position:relative}
+.bar2 i{position:absolute;inset:0 auto 0 0;border-radius:4px}
+svg text{fill:var(--muted);font:11px var(--sans)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.check{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:start}
+.check .ic{font-weight:700} .check .ic.ok{color:var(--good)} .check .ic.no{color:var(--warn)}
+.check code,code{font:12px var(--mono);background:var(--panel);padding:1px 5px;border-radius:4px}
+form.row,.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px}
+input[type=range]{padding:0;accent-color:var(--accent)}
+.note{font-size:12px;color:var(--muted)}
+.toast{position:fixed;right:20px;bottom:20px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;max-width:420px}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.q{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.lane{border-left:4px solid var(--accent);padding:10px 14px;background:var(--panel);border-radius:6px}
+pre{font:12px var(--mono);white-space:pre-wrap;margin:6px 0 0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Token Control Centre</h1><div class="sub" id="sub">reading local logs…</div></div>
+  <nav aria-label="Views">
+    <button data-view="overview" aria-current="page">Overview</button>
+    <button data-view="sessions">Sessions</button>
+    <button data-view="health">Setup health</button>
+    <button data-view="plan">Plan a task</button>
+  </nav>
+  <span class="spacer"></span>
+  <select id="period" aria-label="Period"><option value="month">This month</option><option value="week">This week</option><option value="today">Today</option><option value="30d">Last 30 days</option></select>
+  <button class="btn" id="refresh">Refresh</button>
+</header>
+<main id="app"><div class="empty">Reading your Claude Code and Codex logs…</div></main>
+<div class="toast" id="toast" hidden></div>
+<script>
+"use strict";
+const TOKEN = "__TKE_TOKEN__";
+const app = document.getElementById("app");
+let S = null, view = "overview", tool = "claude";
+
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = (x, unit) => unit === "$" ? "$" + (x || 0).toFixed(2) : Math.round(x || 0).toLocaleString() + " cr";
+const niceMax = v => { const p = Math.pow(10, Math.floor(Math.log10(v || 1))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; };
+const kt = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.round(n / 1000) + "k";
+const pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "0%";
+const dshort = iso => new Date(iso).toLocaleDateString(undefined, {weekday: "short", day: "numeric", month: "short"});
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 4000); }
+async function getJSON(url) { const r = await fetch(url); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }
+async function post(url, body) { const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json", "X-TKE-Token": TOKEN}, body: JSON.stringify(body)}); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }
+
+async function load(refresh) {
+  try {
+    S = await getJSON("/api/summary?period=" + document.getElementById("period").value + (refresh ? "&refresh=1" : ""));
+    document.getElementById("sub").textContent = "local logs · list prices as of " + S.prices_date + " · tke " + S.version + " · no tokens spent";
+    if (!S.tools[tool].has_data && S.tools.codex.has_data) tool = "codex";
+    render();
+  } catch (e) { app.innerHTML = '<div class="empty">Could not read logs: ' + esc(e.message) + '</div>'; }
+}
+
+function render() {
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false"));
+  ({overview, sessions, health, plan})[view]();
+}
+
+/* ------------------------------------------------------------- overview */
+function paceCard(name, t) {
+  const p = t.pace, u = t.unit, ratio = p.ratio;
+  const chip = !t.has_data ? '<span class="chip">no data yet</span>' :
+    ratio <= 1.05 ? '<span class="chip good">on pace</span>' :
+    ratio <= 1.4 ? '<span class="chip warn">' + ratio.toFixed(1) + '× the pace that lasts</span>' :
+    '<span class="chip bad">' + ratio.toFixed(1) + '× the pace that lasts</span>';
+  const n0 = new Date(), today = (t.days[n0.getFullYear() + "-" + String(n0.getMonth() + 1).padStart(2, "0") + "-" + String(n0.getDate()).padStart(2, "0")] || 0);
+  const used = Math.min(100, 100 * p.spent / (p.budget || 1)), exp = Math.min(100, 100 * p.expected_by_now / (p.budget || 1));
+  return `<div class="card"><h2>${name}</h2>
+    <div class="row" style="justify-content:space-between"><div class="big">${fmt(p.spent, u)} <span class="muted" style="font-size:15px">of ${fmt(p.budget, u)}</span></div>${chip}</div>
+    <div class="meter" title="Filled: spent. Line: where spending should be by today."><div class="fill" style="width:${used}%;background:${ratio > 1.05 ? "var(--bad)" : "var(--accent)"}"></div><div class="mark" style="left:${exp}%"></div></div>
+    <div class="kv">
+      <span>Today</span><b>${fmt(today, u)} of ${fmt(p.per_workday, u)}</b>
+      <span>Average per workday</span><b>${fmt(p.daily_avg, u)}</b>
+      <span>Pace that lasts the month</span><b>${fmt(p.per_workday, u)}</b>
+      <span>Runs out</span><b>${p.runout ? dshort(p.runout) : "not this month"}</b>
+    </div></div>`;
+}
+
+function dailyChart(t) {
+  const now = new Date(S.now), y = now.getFullYear(), m = now.getMonth(), nd = new Date(y, m + 1, 0).getDate();
+  const vals = [];
+  for (let d = 1; d <= nd; d++) { const k = new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10); vals.push(t.days[k] || 0); }
+  const allow = t.pace.per_workday, W = 1000, H = 220, L = 54, B = 26, top = 12;
+  const max = niceMax(Math.max(allow * 1.3, ...vals)), bw = (W - L - 10) / nd, yy = v => H - B - (H - B - top) * v / max;
+  let g = "";
+  for (let i = 0; i <= 4; i++) { const v = max * i / 4; g += `<line x1="${L}" x2="${W - 6}" y1="${yy(v)}" y2="${yy(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${yy(v) + 4}" text-anchor="end">${fmt(v, t.unit)}</text>`; }
+  vals.forEach((v, i) => {
+    const x = L + i * bw + 2, day = new Date(y, m, i + 1), wk = day.getDay() % 6 === 0;
+    const col = v > allow ? "var(--bad)" : "var(--accent)";
+    if (v > 0) g += `<rect x="${x}" y="${yy(v)}" width="${Math.max(2, bw - 4)}" height="${H - B - yy(v)}" rx="2" fill="${col}" opacity="${wk ? .55 : 1}"><title>${day.toDateString()}: ${fmt(v, t.unit)}</title></rect>`;
+    if ((i + 1) % 2 === 1) g += `<text x="${x + bw / 2 - 2}" y="${H - 8}" text-anchor="middle">${i + 1}</text>`;
+  });
+  g += `<line x1="${L}" x2="${W - 6}" y1="${yy(allow)}" y2="${yy(allow)}" stroke="var(--good)" stroke-width="2" stroke-dasharray="6 4"/><text x="${W - 8}" y="${yy(allow) - 6}" text-anchor="end" style="fill:var(--good)">daily allowance ${fmt(allow, t.unit)}</text>`;
+  return `<div class="card"><h2>${tool === "claude" ? "Claude" : "Codex"} spend per day, this month</h2>
+    <div class="scroll"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spend per day against the daily allowance" style="width:100%;min-width:560px">${g}</svg></div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>within allowance</span><span><i style="background:var(--bad)"></i>over allowance</span><span>faded = weekend</span></div></div>`;
+}
+
+function leaksCard(t) {
+  const lk = t.leaks, u = t.unit, tot = lk.total || 1;
+  if (!lk.calls) return `<div class="card"><h2>Where the money went</h2><div class="empty">No ${tool} usage in this period.</div></div>`;
+  const rows = [
+    ["Re-reading the prompt (cache reads)", lk.reads, "var(--read)", "Grows with context size × number of calls. Fresh session per task; /clear between tasks."],
+    ["New tokens written / uncached input", lk.writes, "var(--write)", "File reads and tool output enter here. Search before reading; trim test output."],
+    ["Output and thinking", lk.output, "var(--out)", "Lower effort for routine work; ask for diffs, not whole files."],
+  ];
+  if (tool === "claude") rows.push(["Avoidable: cache rebuilds after breaks (" + lk.rebuilds + ")", lk.rebuild_waste, "var(--rebuild)", 'Set the 1-hour cache (Setup health), or /clear before a long break.']);
+  rows.push(["Calls with a prompt over " + (S.config.big_context / 1000) + "k tokens", lk.fat_context, "var(--rebuild)", "The fat tail. These calls re-read a huge history; split the work into phases."]);
+  rows.push(["Frontier models (Fable, GPT-6 Astra)", lk.frontier, "var(--bad)", "Use them on purpose for one hard problem, then switch back."]);
+  rows.push(["Subagents", lk.subagents, "var(--muted)", "Run subagents on a cheaper model; fan out only for truly parallel work."]);
+  let h = "";
+  for (const [label, v, col, fix] of rows) h += `<div class="leak"><span>${esc(label)}</span><b class="n">${fmt(v, u)} · ${pct(v, tot)}</b><div class="bar2"><i style="width:${100 * v / tot}%;background:${col}"></i></div><div class="fix">${esc(fix)}</div></div>`;
+  if (lk.unpriced_models.length) h += `<p class="note">No price for: ${esc(lk.unpriced_models.join(", "))}. Add them to prices.json.</p>`;
+  return `<div class="card"><h2>Where the money went (${esc(S.period)}, ${lk.calls.toLocaleString()} calls)</h2>${h}</div>`;
+}
+
+function sessionsTable(t, n) {
+  const ss = t.sessions.slice(0, n);
+  if (!ss.length) return `<div class="empty">No sessions in this period.</div>`;
+  let h = `<div class="scroll"><table><thead><tr><th>Cost</th><th>Started</th><th>Project</th><th class="n">Calls</th><th class="n">Peak prompt</th><th>What went wrong</th></tr></thead><tbody>`;
+  for (const s of ss) h += `<tr class="click" data-sid="${esc(s.session)}" data-tool="${esc(s.tool)}" tabindex="0"><td class="n"><b>${fmt(s.cost, t.unit)}</b></td><td>${dshort(s.start)}</td><td>${esc(s.project || s.tool)}</td><td class="n">${s.calls}</td><td class="n">${kt(s.peak)}</td><td>${s.tags.map(x => `<span class="tag ${/rebuild|big|frontier/.test(x) ? "hot" : ""}">${esc(x)}</span>`).join("") || '<span class="muted">nothing obvious</span>'}</td></tr>`;
+  return h + "</tbody></table></div>";
+}
+
+function toolSwitch() {
+  return `<div class="row"><span class="muted">Show</span>
+    <button class="btn ${tool === "claude" ? "primary" : ""}" data-tool-switch="claude">Claude Code</button>
+    <button class="btn ${tool === "codex" ? "primary" : ""}" data-tool-switch="codex">Codex</button></div>`;
+}
+
+function overview() {
+  const c = S.tools.claude, x = S.tools.codex, t = S.tools[tool];
+  const tips = t.tips.map(s => `<li>${esc(s)}</li>`).join("");
+  app.innerHTML = `
+    <div class="grid">${paceCard("Claude Code budget", c)}${paceCard("Codex credits", x)}
+      <div class="card"><h2>Budget</h2><form class="row" id="budget">
+        <label>Claude $ / month<input id="b-claude" type="number" min="0" step="10" value="${S.config.claude_budget_usd}"></label>
+        <label>Codex credits / month<input id="b-codex" type="number" min="0" step="100" value="${S.config.codex_budget_credits}"></label>
+        <label>Workdays<input id="b-work" type="number" min="1" max="31" value="${S.config.workdays || ""}"></label>
+        <button class="btn primary">Save</button></form>
+        <p class="note">Spend is estimated from local logs at list price. On a subscription it is the API-equivalent value, not your bill.</p></div></div>
+    ${toolSwitch()}
+    ${dailyChart(t)}
+    <div class="grid">${leaksCard(t)}
+      <div class="card"><h2>Do this next</h2>${tips ? `<ol>${tips}</ol>` : '<p class="muted">No big leak in this period. Keep one task per session.</p>'}
+        <h2 style="margin-top:16px">Most expensive sessions</h2>${sessionsTable(t, 5)}
+        <p class="note">Click a session to see call by call where its cost came from.</p></div></div>`;
+  document.getElementById("budget").onsubmit = async e => {
+    e.preventDefault();
+    try { await post("/api/budget", {claude_budget_usd: +document.getElementById("b-claude").value, codex_budget_credits: +document.getElementById("b-codex").value, workdays: document.getElementById("b-work").value}); toast("Budget saved"); load(); }
+    catch (err) { toast("Not saved: " + err.message); }
+  };
+}
+
+/* ------------------------------------------------------------- sessions */
+function sessions() {
+  const t = S.tools[tool];
+  app.innerHTML = `${toolSwitch()}<div class="card"><h2>Costliest sessions (${esc(S.period)})</h2>${sessionsTable(t, 12)}</div><div id="detail"></div>`;
+}
+
+async function showSession(toolName, sid) {
+  view = "sessions"; tool = toolName; sessions();
+  const box = document.getElementById("detail");
+  box.innerHTML = '<div class="card empty">Loading session…</div>';
+  const d = await getJSON("/api/session?tool=" + encodeURIComponent(toolName) + "&id=" + encodeURIComponent(sid));
+  const cs = d.calls, u = toolName === "claude" ? "$" : "cr";
+  if (!cs.length) { box.innerHTML = '<div class="card empty">No calls found.</div>'; return; }
+  const main = cs.filter(c => !c.subagent), sub = cs.filter(c => c.subagent);
+  const total = cs.reduce((a, c) => a + (c.cost || 0), 0), waste = cs.reduce((a, c) => a + (c.waste || 0), 0);
+  const big = S.config.big_context, fat = cs.filter(c => c.prompt >= big), fatCost = fat.reduce((a, c) => a + (c.cost || 0), 0);
+  const firstFat = main.findIndex(c => c.prompt >= big), peak = Math.max(...cs.map(c => c.prompt));
+  const reb = main.filter(c => c.rebuild);
+  // chart: prompt size per main-thread call, rebuilds highlighted, cumulative cost line
+  const W = 1000, H = 240, L = 54, R = 92, B = 24, top = 12, n = main.length;
+  const ymax = niceMax(Math.max(big * 1.1, ...main.map(c => c.prompt))), bw = (W - L - R) / Math.max(1, n);
+  const yy = v => H - B - (H - B - top) * v / ymax;
+  let cum = 0; const cmax = main.reduce((a, c) => a + (c.cost || 0), 0) || 1;
+  let g = "", path = "";
+  for (let i = 0; i <= 4; i++) { const v = ymax * i / 4; g += `<line x1="${L}" x2="${W - R}" y1="${yy(v)}" y2="${yy(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${yy(v) + 4}" text-anchor="end">${kt(v)}</text>`; }
+  main.forEach((c, i) => {
+    const x = L + i * bw;
+    g += `<rect x="${x}" y="${yy(c.prompt)}" width="${Math.max(1, bw - (bw > 3 ? 1 : 0))}" height="${H - B - yy(c.prompt)}" fill="${c.rebuild ? "var(--rebuild)" : c.prompt >= big ? "color-mix(in srgb,var(--rebuild) 45%,var(--read))" : "var(--read)"}"><title>call ${i + 1} · ${new Date(c.ts).toLocaleTimeString()} · prompt ${kt(c.prompt)} · ${fmt(c.cost, u)}${c.rebuild ? " · cache rebuild" : ""}</title></rect>`;
+    cum += c.cost || 0;
+    path += (i ? "L" : "M") + (x + bw / 2).toFixed(1) + " " + (H - B - (H - B - top) * cum / cmax).toFixed(1);
+  });
+  g += `<line x1="${L}" x2="${W - R}" y1="${yy(big)}" y2="${yy(big)}" stroke="var(--bad)" stroke-dasharray="5 4"/><text x="${W - R - 4}" y="${yy(big) - 5}" text-anchor="end" style="fill:var(--bad)">${kt(big)} prompt</text>`;
+  g += `<path d="${path}" fill="none" stroke="var(--ink)" stroke-width="2"/><text x="${W - R + 6}" y="${top + 10}">${fmt(cmax, u)}</text><text x="${W - R + 6}" y="${top + 24}">main thread</text>`;
+  const advice = [];
+  if (firstFat >= 0) advice.push(`The prompt passed ${kt(big)} tokens at call ${firstFat + 1} of ${n}. Every call after that re-read it: ${fmt(fatCost, u)} (${pct(fatCost, total)} of this session). A /clear and a fresh session there, carrying a short handoff note or PLAN.md, would have restarted near the base prompt.`);
+  if (reb.length) advice.push(`${reb.length} call${reb.length > 1 ? "s" : ""} came back to a cold cache after a break and wrote the prompt again; ${fmt(waste, u)} of that was avoidable. The 1-hour cache or a /clear before long breaks fixes it.`);
+  if (sub.length) advice.push(`${sub.length} subagent calls cost ${fmt(sub.reduce((a, c) => a + (c.cost || 0), 0), u)}. If they ran on your main model, put Explore on Haiku.`);
+  const models = [...new Set(cs.map(c => c.model))].join(", ");
+  if (!advice.length) advice.push("No obvious leak: the prompt stayed under the big-context line and the cache stayed warm.");
+  box.innerHTML = `<div class="card"><h2>Session ${esc(sid.slice(0, 8))} · ${esc(models)}</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px">
+      <div><div class="muted">Cost</div><div class="big">${fmt(total, u)}</div></div>
+      <div><div class="muted">Calls</div><div class="big">${cs.length}</div></div>
+      <div><div class="muted">Peak prompt</div><div class="big">${kt(peak)}</div></div>
+      <div><div class="muted">Avoidable rebuilds</div><div class="big">${fmt(waste, u)}</div></div></div>
+    <div class="scroll"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Prompt size per call with cumulative cost" style="width:100%;min-width:560px">${g}</svg></div>
+    <div class="legend"><span><i style="background:var(--read)"></i>prompt size per call</span><span><i style="background:color-mix(in srgb,var(--rebuild) 45%,var(--read))"></i>prompt over ${kt(big)}</span><span><i style="background:var(--rebuild)"></i>cache rebuild after a break</span><span><i style="background:var(--ink)"></i>cumulative cost</span></div>
+    <h2 style="margin-top:14px">What this session says</h2><ul>${advice.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>`;
+  box.scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+/* --------------------------------------------------------------- health */
+async function health() {
+  app.innerHTML = '<div class="card empty">Checking your settings…</div>';
+  const h = await getJSON("/api/health");
+  const ok = h.checks.filter(c => c.ok).length;
+  let rows = "";
+  for (const area of ["Claude Code", "Codex"]) {
+    rows += `<h2 style="margin-top:12px">${area}</h2>`;
+    for (const c of h.checks.filter(c => c.area === area)) rows += `<div class="check"><span class="ic ${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "!"}</span><div><b>${esc(c.name)}</b><div class="muted">${esc(c.now)}</div></div><div>${esc(c.why)}${c.fix ? `<div class="note">Fix: <code>${esc(c.fix)}</code></div>` : ""}</div></div>`;
+  }
+  const plan = t => (h.plan[t] || []).map(x => "• " + x).join("\n");
+  app.innerHTML = `<div class="card"><h2>Setup health · ${ok} of ${h.checks.length} in good shape</h2>${rows}</div>
+    <div class="card"><h2>Apply the recommended settings</h2>
+      <p>Writes only what is missing, keeps values you already set, and saves a backup next to every file it edits. Restart Claude Code afterwards.</p>
+      <div class="grid"><div><b>Claude Code</b><pre>${esc(plan("claude"))}</pre></div><div><b>Codex</b><pre>${esc(plan("codex"))}</pre></div></div>
+      <div class="row" style="margin-top:12px"><label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="force"> also replace values I set (model, effort)</label>
+        <button class="btn primary" id="apply-claude">Apply to Claude Code</button><button class="btn primary" id="apply-codex">Apply to Codex</button></div>
+      <div id="applied" class="note"></div></div>`;
+  const apply = async t => {
+    try { const r = await post("/api/setup", {targets: [t], force: document.getElementById("force").checked});
+      document.getElementById("applied").innerHTML = r.written.length ? r.written.map(w => "Wrote " + esc(w.file) + (w.backup ? " (backup " + esc(w.backup.split(/[\\/]/).pop()) + ")" : "")).join("<br>") : "Nothing to change.";
+      toast("Applied to " + t); setTimeout(health, 1500);
+    } catch (e) { toast("Not applied: " + e.message); }
+  };
+  document.getElementById("apply-claude").onclick = () => apply("claude");
+  document.getElementById("apply-codex").onclick = () => apply("codex");
+}
+
+/* ----------------------------------------------------------------- plan */
+async function plan() {
+  const models = await getJSON("/api/models");
+  const opt = (list, sel) => list.map(m => `<option ${m === sel ? "selected" : ""}>${esc(m)}</option>`).join("");
+  app.innerHTML = `<div class="grid">
+    <div class="card"><h2>Which model for this task?</h2>
+      <div class="q"><span>Can a check prove it right (tests pass, lint clean, a one-line answer)?</span><input type="checkbox" id="q-check"></div>
+      <div class="q"><span>Is the approach already written down (a spec or PLAN.md names the files)?</span><input type="checkbox" id="q-decided"></div>
+      <div class="q"><span>Is it a design call, or a bug two attempts didn't fix?</span><input type="checkbox" id="q-hard"></div>
+      <div id="lane" style="margin-top:12px"></div></div>
+    <div class="card"><h2>What will this session cost?</h2>
+      <div class="row">
+        <label>Model<select id="e-model"><optgroup label="Claude ($)">${opt(models.claude, "claude-sonnet-5-5")}</optgroup><optgroup label="Codex (credits)">${opt(models.codex)}</optgroup></select></label>
+        <label>Cache<select id="e-ttl"><option value="1h">1 hour</option><option value="5m">5 minutes</option></select></label></div>
+      <div class="row" style="margin-top:10px">
+        <label>Calls <span id="v-calls"></span><input type="range" id="e-calls" min="5" max="250" step="5" value="50"></label>
+        <label>Prompt at start (k) <span id="v-start"></span><input type="range" id="e-start" min="5" max="80" value="22"></label>
+        <label>Prompt at end (k) <span id="v-end"></span><input type="range" id="e-end" min="10" max="600" step="5" value="95"></label>
+        <label>Output per call <span id="v-out"></span><input type="range" id="e-out" min="100" max="2000" step="50" value="600"></label>
+        <label>Breaks past the cache <span id="v-breaks"></span><input type="range" id="e-breaks" min="0" max="10" value="0"></label></div>
+      <div id="est" style="margin-top:12px"></div>
+      <p class="note">Every call re-sends the whole prompt; old tokens are cache reads, new ones are writes, and a break past the cache lifetime writes everything again.</p></div></div>`;
+  const lane = async () => {
+    const q = k => document.getElementById("q-" + k).checked ? 1 : 0;
+    const r = await getJSON(`/api/route?check=${q("check")}&decided=${q("decided")}&hard=${q("hard")}`);
+    document.getElementById("lane").innerHTML = `<div class="lane"><b>${esc(r.lane.toUpperCase())}</b> · ${esc(r.why)}<pre>Claude Code: ${esc(r.claude)}\nCodex:       ${esc(r.codex)}${r.local ? "\nOut of credit: " + esc(r.local) : ""}</pre></div>`;
+  };
+  const est = async () => {
+    const v = id => document.getElementById("e-" + id).value;
+    ["calls", "start", "end", "out", "breaks"].forEach(k => document.getElementById("v-" + k).textContent = v(k));
+    const end = Math.max(+v("start"), +v("end"));
+    const r = await getJSON(`/api/estimate?model=${encodeURIComponent(v("model"))}&calls=${v("calls")}&start=${v("start")}&end=${end}&out=${v("out")}&breaks=${v("breaks")}&ttl=${v("ttl")}`);
+    const u = r.unit === "$" ? "$" : "cr", budget = u === "$" ? S.config.claude_budget_usd : S.config.codex_budget_credits;
+    const t = r.total || 1, p = r.parts;
+    document.getElementById("est").innerHTML = `<div class="big">${fmt(r.total, u)}</div><div class="muted">${Math.floor(budget / t)} sessions like this per monthly budget</div>
+      ${[["cache reads", p.read, "var(--read)"], ["new writes", p.write, "var(--write)"], ["break rebuilds", p.rebuild, "var(--rebuild)"], ["output", p.output, "var(--out)"]].map(([l, v, c]) => `<div class="leak"><span>${l}</span><b class="n">${fmt(v, u)}</b><div class="bar2"><i style="width:${100 * v / t}%;background:${c}"></i></div></div>`).join("")}`;
+  };
+  ["check", "decided", "hard"].forEach(k => document.getElementById("q-" + k).onchange = lane);
+  ["model", "ttl", "calls", "start", "end", "out", "breaks"].forEach(k => document.getElementById("e-" + k).oninput = est);
+  lane(); est();
+}
+
+/* ---------------------------------------------------------------- wiring */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { view = b.dataset.view; render(); });
+document.getElementById("refresh").onclick = () => load(true);
+document.getElementById("period").onchange = () => load();
+app.addEventListener("click", e => {
+  const sw = e.target.closest("[data-tool-switch]"); if (sw) { tool = sw.dataset.toolSwitch; render(); return; }
+  const tr = e.target.closest("tr[data-sid]"); if (tr) showSession(tr.dataset.tool, tr.dataset.sid);
+});
+app.addEventListener("keydown", e => { const tr = e.target.closest("tr[data-sid]"); if (tr && e.key === "Enter") showSession(tr.dataset.tool, tr.dataset.sid); });
+load();
+</script>
+</body>
+</html>

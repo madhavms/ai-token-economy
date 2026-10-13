@@ -230,3 +230,63 @@ class Route(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import threading
+        from http.server import ThreadingHTTPServer
+        from token_economy import ui
+        cls.ui = ui
+        cls.tmp = tempfile.TemporaryDirectory()
+        os.environ.update(CLAUDE_CONFIG_DIR=cls.tmp.name, CODEX_HOME=cls.tmp.name, TKE_HOME=cls.tmp.name)
+        write_jsonl(Path(cls.tmp.name) / "projects" / "-repo" / "s1.jsonl",
+                    [claude_row(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "m1", "r1", read=0, w5=30000)])
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        for k in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "TKE_HOME"):
+            os.environ.pop(k, None)
+        cls.tmp.cleanup()
+
+    def req(self, path, data=None, token=None, host=None):
+        import urllib.request, urllib.error
+        r = urllib.request.Request("http://127.0.0.1:%d%s" % (self.port, path),
+                                   data=json.dumps(data).encode() if data is not None else None)
+        if token:
+            r.add_header("X-TKE-Token", token)
+        if host:
+            r.add_header("Host", host)
+        try:
+            with urllib.request.urlopen(r, timeout=10) as resp:
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    def test_page_summary_and_session(self):
+        code, body = self.req("/")
+        self.assertEqual(code, 200)
+        self.assertIn(self.ui.TOKEN.encode(), body)
+        code, body = self.req("/api/summary?refresh=1")
+        s = json.loads(body)
+        self.assertEqual(s["tools"]["claude"]["leaks"]["calls"], 1)
+        sid = s["tools"]["claude"]["sessions"][0]["session"]
+        d = json.loads(self.req("/api/session?tool=claude&id=" + sid)[1])
+        self.assertEqual(len(d["calls"]), 1)
+
+    def test_writes_need_the_token_and_a_local_host(self):
+        self.assertEqual(self.req("/api/budget", {"claude_budget_usd": 1})[0], 403)
+        self.assertEqual(self.req("/api/summary", host="evil.example")[0], 403)
+        code, body = self.req("/api/budget", {"claude_budget_usd": 321, "codex_budget_credits": 999, "workdays": 20},
+                              token=self.ui.TOKEN)
+        self.assertEqual((code, json.loads(body)["config"]["claude_budget_usd"]), (200, 321))
+
+    def test_estimate_and_route(self):
+        e = json.loads(self.req("/api/estimate?model=claude-opus-5-5&calls=110&start=32&end=290&out=900&breaks=5")[1])
+        self.assertAlmostEqual(e["total"], 10.75, places=2)
+        self.assertEqual(json.loads(self.req("/api/route?hard=1")[1])["lane"], "frontier")

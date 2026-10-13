@@ -206,6 +206,11 @@ def cmd_bench(a):
     bench.run(a.source, a.models)
 
 
+def cmd_ui(a):
+    from . import ui
+    ui.serve(a.port, not a.no_browser)
+
+
 def cmd_hook(a):
     from . import hooks
     hooks.main([a.event])
@@ -267,6 +272,11 @@ def main(argv=None):
     p.add_argument("source", nargs="?", default=".", help="a source folder to build the prompt from")
     p.add_argument("models", nargs="*", default=["gpt-oss:20b"])
     p.set_defaults(fn=cmd_bench)
+
+    p = sub.add_parser("ui", help="open the local control centre in your browser")
+    p.add_argument("--port", type=int, default=8790)
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(fn=cmd_ui)
 
     p = sub.add_parser("hook", help=argparse.SUPPRESS)
     p.add_argument("event")
