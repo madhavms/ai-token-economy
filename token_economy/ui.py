@@ -131,11 +131,18 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        # read the body before answering: replying first makes some systems reset the connection
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n > 65536:
+            return self._send(413, {"error": "too large"})
+        raw = self.rfile.read(n) if n > 0 else b""
         if not self._host_ok() or self.headers.get("X-TKE-Token") != TOKEN:
             return self._send(403, {"error": "forbidden"})
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(n) or b"{}")
+            body = json.loads(raw or b"{}")
             if self.path == "/api/budget":
                 cfg = config.load()
                 for k in ("claude_budget_usd", "codex_budget_credits", "workdays"):
