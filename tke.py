@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run tke straight from a clone, no install needed:  python3 tke.py report"""
+"""Run tke straight from a clone, no install needed:  python tke.py report"""
 import os
 import sys
 

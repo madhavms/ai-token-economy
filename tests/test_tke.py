@@ -1,4 +1,4 @@
-"""Run: python3 -m unittest discover -s tests -v   (stdlib only, Python 3.8+)"""
+"""Run: python -m unittest discover -s tests -v   (stdlib only, Python 3.8+)"""
 import io
 import json
 import os
@@ -226,6 +226,25 @@ class Route(unittest.TestCase):
         self.assertEqual(route.decide({"check": False, "decided": True}), "workhorse")
         self.assertEqual(route.decide({"hard": True}), "frontier")
         self.assertEqual(route.decide({}), "strong")
+
+
+class FreshMachine(unittest.TestCase):
+    """Every command on a machine with no logs and no settings, as a new clone sees it."""
+
+    def test_every_command_runs_on_empty_homes(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, HOME=d, USERPROFILE=d, APPDATA=d, TKE_HOME=os.path.join(d, "tke"),
+                       CLAUDE_CONFIG_DIR=os.path.join(d, ".claude"), CODEX_HOME=os.path.join(d, ".codex"))
+            for args in (["init", "--claude", "500", "--codex", "13000"], ["report"], ["report", "week", "--json"],
+                         ["status"], ["statusline"], ["setup"], ["setup", "claude", "codex", "project", "--dir", d],
+                         ["route", "--check"], ["estimate"], ["uninstall"]):
+                r = subprocess.run([sys.executable, str(ROOT / "tke.py")] + args, env=env, cwd=d, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                self.assertEqual(r.returncode, 0, "tke %s: %s" % (" ".join(args), r.stderr))
+            self.assertFalse(os.path.exists(os.path.join(d, ".claude", "settings.json")), "dry run wrote a file")
+            r = subprocess.run([sys.executable, str(ROOT / "tke.py"), "setup", "nope"], env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            self.assertNotEqual(r.returncode, 0)
 
 
 if __name__ == "__main__":

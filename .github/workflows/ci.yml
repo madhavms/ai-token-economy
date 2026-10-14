@@ -6,6 +6,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.12"]
+        include:                     # the oldest supported Python
+          - os: windows-latest
+            python: "3.8"
+          - os: ubuntu-22.04
+            python: "3.8"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -14,4 +19,5 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests -v
       - run: python tke.py --help
+      - run: python tke.py statusline
       - run: python tke.py estimate --model claude-opus-5-5 --calls 110 --start 32 --end 290 --out 900 --breaks 5

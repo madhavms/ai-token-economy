@@ -154,7 +154,7 @@ def prompt(ev):
         sid = re.sub(r"[^A-Za-z0-9_.-]", "_", ev.get("session_id") or "x")
         marker = state_dir() / ("cold-%s" % sid)
         if not marker.exists() or time.time() - marker.stat().st_mtime > 300:
-            marker.write_text(str(time.time()))
+            marker.write_text(str(time.time()), encoding="utf-8")
             from .prices import claude_price
             p = claude_price(model) or {"w5": 5, "w1h": 8}
             cost = ctx * (p["w1h"] if ttl == 60 else p["w5"]) / 1e6

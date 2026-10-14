@@ -4,46 +4,59 @@
 
 It runs offline, has no dependencies (Python 3.8+ standard library), and **never calls a model, so it spends zero tokens.**
 
-Real output from the author's machine:
+Example output (illustrative numbers):
 
 ```
-$ python3 tke.py report
-Claude  $421.05 of $500.00 this month   ########################....
-        $42.11 a workday on average, $22.73 lasts the month  (1.9x the pace that lasts)
+> python tke.py report
+Claude  $410.00 of $500.00 this month   #######################.....
+        $41.00 a workday on average, $22.73 lasts the month  (1.8x the pace that lasts)
         at this rate it runs out on Fri 16 Oct
 
-Where the Claude money went (month, 4277 calls)
-  re-reading the prompt (cache reads)               $195.58   46%
-  new tokens written / uncached input               $134.44   32%
-  output and thinking                                $91.03   22%
-    of which: rebuilds after breaks, avoidable       $28.20    7%
-    calls with a prompt over 150k tokens            $322.57   77%
+Where the Claude money went (month, 4,000 calls)
+  re-reading the prompt (cache reads)               $190.00   46%
+  new tokens written / uncached input               $130.00   32%
+  output and thinking                                $90.00   22%
+    of which: rebuilds after breaks, avoidable       $28.00    7%
+    calls with a prompt over 150k tokens            $310.00   76%
   -> Cache rebuilds after breaks: set "promptCacheTtl": "1h" ...
   -> Big contexts: /clear between tasks, one fresh session per phase ...
 
 Most expensive sessions (month)
-    $171.36  claude 1763 calls  peak  965k  ...  big context, 14 cache rebuilds, long session
+    $165.00  claude 1700 calls  peak  950k  ...  big context, 14 cache rebuilds, long session
 ```
 
 The ideas behind it, with sources and diagrams: **[AI Token Economy](https://madhavms.github.io/knowledge-graph/ai-engineering/ai-token-economy.html)**. In short: a coding agent re-sends the whole conversation on every call, so the bill is set by how big that conversation gets, whether it is read from the prompt cache, and which model reads it.
 
 ## Quick start
 
+Works the same on Windows, macOS and Linux. You need Python 3.8 or newer and git; nothing else is installed.
+
 ```bash
 git clone https://github.com/madhavms/ai-token-economy.git
 cd ai-token-economy
-python3 tke.py init --claude 500 --codex 13000     # your monthly budgets
-python3 tke.py report                              # where it went, when it runs out
-python3 tke.py setup                               # preview the recommended settings (changes nothing)
-python3 tke.py setup --apply                       # apply them, with backups
+python tke.py init --claude 500 --codex 13000     # your monthly budgets
+python tke.py report                              # where it went, when it runs out
+python tke.py setup                               # preview the recommended settings (changes nothing)
+python tke.py setup --apply                       # apply them, with backups
+python tke.py ui                                  # the local control centre
 ```
 
-On Windows use `py tke.py ...`. To get a `tke` command instead, `pip install .` from the clone.
+Use whichever Python command your machine has: `python` or `py` on Windows, `python3` on macOS and Linux. Run `setup --apply` with the same Python you'll keep using, because the hooks it registers point at that Python and at this folder. If you move the folder, run `setup --apply` again. To get a `tke` command instead, `pip install .` from the clone.
+
+On Windows, Claude Code runs its Bash tool and hooks through Git Bash, so the hooks work there unchanged. Settings live in `%USERPROFILE%\.claude`, `%USERPROFILE%\.codex` and `%APPDATA%\token-economy`.
+
+### Setting it up with a coding agent
+
+The tool never calls a model, so an agent only needs to run commands. A short prompt is enough:
+
+> Clone https://github.com/madhavms/ai-token-economy, run `python tke.py init --claude <dollars> --codex <credits>`, then `python tke.py setup` and show me the plan. Don't pass `--apply` until I say so.
+
+Then run `python tke.py ui` yourself. It's a long-running server, so don't leave an agent session sitting on it.
 
 ## The control centre
 
 ```bash
-python3 tke.py ui
+python tke.py ui
 ```
 
 Opens a local dashboard at http://127.0.0.1:8790 (the next free port if that one is taken). It reads the same logs, binds to your machine only, and never calls a model.
@@ -111,7 +124,7 @@ Thresholds are environment variables: `TKE_READ_MAX_BYTES`, `TKE_SLEEP_MAX_SEC`,
 - **Claude Code:** `~/.claude/projects/**/*.jsonl`, including subagents. A reply that spans several lines is counted once, by message id and request id. Cost = input + 5-minute writes + 1-hour writes + cache reads + output, each at its own price.
 - **Codex:** `~/.codex/sessions/**/*.jsonl`. Usage is a running total per session; tke takes the differences. Input includes cached input; credits use the Codex rate card, which has no write charge.
 - **Rebuilds:** a call that writes at least 60% of a prompt over 20k tokens after more than the cache lifetime since the previous call. The avoidable part is what that write cost above reading the same tokens from cache.
-- **Prices** are list prices as of 2026-10-13 in `token_economy/prices.py`. If your company pays contracted rates or prices change, put a `prices.json` in the config folder (`~/.config/token-economy/`, or `%APPDATA%\token-economy` on Windows):
+- **Prices** are list prices as of 2026-10-13 in `token_economy/prices.py`. If your company pays contracted rates or prices change, put a `prices.json` in the config folder (`%APPDATA%\token-economy` on Windows, `~/.config/token-economy/` elsewhere):
 
 ```json
 {"claude": {"claude-opus-5-5": {"inp": 4, "w5": 5, "w1h": 8, "read": 0.2, "out": 20}},
@@ -131,7 +144,7 @@ The figures are estimates from local logs. On a subscription they are the API-eq
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v
+python -m unittest discover -s tests -v
 ```
 
 MIT licensed. Not affiliated with Anthropic or OpenAI.

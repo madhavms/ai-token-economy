@@ -127,17 +127,19 @@ def cmd_status(a):
 
 def cmd_statusline(a):
     """Claude Code status line. Cached for 60 s so it stays cheap."""
-    try:
-        ev = json.load(sys.stdin)
-    except ValueError:
-        ev = {}
+    ev = {}
+    if sys.stdin and not sys.stdin.isatty():   # Claude Code pipes JSON in; a terminal would just wait
+        try:
+            ev = json.load(sys.stdin)
+        except ValueError:
+            pass
     from .hooks import state_dir
     cache = state_dir() / "statusline.json"
     cfg = config.load()
     now = report.local_now()
     data = None
     try:
-        data = json.loads(cache.read_text())
+        data = json.loads(cache.read_text(encoding="utf-8"))
         if time.time() - data["at"] > 60:
             data = None
     except (OSError, ValueError, KeyError):
@@ -148,7 +150,7 @@ def cmd_statusline(a):
         data = {"at": time.time(), "month": sum(c.cost or 0 for c in calls),
                 "today": sum(c.cost or 0 for c in calls if c.ts >= today)}
         try:
-            cache.write_text(json.dumps(data))
+            cache.write_text(json.dumps(data), encoding="utf-8")
         except OSError:
             pass
     p = report.pace(data["month"], cfg["claude_budget_usd"], now, cfg.get("workdays"))
@@ -166,6 +168,9 @@ def cmd_statusline(a):
 
 def cmd_setup(a):
     targets = a.target or ["claude", "codex"]
+    bad = [t for t in targets if t not in ("claude", "codex", "project")]
+    if bad:
+        sys.exit("tke setup: unknown target %s (choose from claude, codex, project)" % ", ".join(bad))
     for t in targets:
         print("\n== %s" % t)
         if t == "claude":
@@ -217,6 +222,11 @@ def cmd_hook(a):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):   # a piped Windows console defaults to cp1252
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(prog="tke", description="AI token economy toolkit for Claude Code and Codex. Offline; spends no tokens.")
     ap.add_argument("--version", action="version", version="tke " + __version__)
     sub = ap.add_subparsers(dest="cmd")
@@ -240,7 +250,8 @@ def main(argv=None):
     p.set_defaults(fn=cmd_statusline)
 
     p = sub.add_parser("setup", help="apply the recommended settings (dry run unless --apply)")
-    p.add_argument("target", nargs="*", choices=["claude", "codex", "project"], help="default: claude codex")
+    # no choices=: Python 3.8 argparse rejects an empty list against choices
+    p.add_argument("target", nargs="*", help="claude | codex | project (default: claude codex)")
     p.add_argument("--apply", action="store_true", help="write the changes (backups are made)")
     p.add_argument("--force", action="store_true", help="replace values you already set")
     p.add_argument("--no-statusline", action="store_true")
