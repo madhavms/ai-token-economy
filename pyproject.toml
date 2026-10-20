@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-token-economy"
-version = "0.2.1"
-description = "Make an AI coding budget last the month: offline spend reports, settings and hooks for Claude Code and Codex."
+version = "0.3.0"
+description = "Make an AI coding budget last the month: offline spend reports, settings, hooks and subagent roles for Claude Code, Codex and Copilot CLI."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
@@ -18,4 +18,4 @@ tke = "token_economy.cli:main"
 packages = ["token_economy"]
 
 [tool.setuptools.package-data]
-token_economy = ["templates/*", "web/*"]
+token_economy = ["templates/*", "templates/roles/*/*", "web/*"]

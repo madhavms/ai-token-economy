@@ -34,6 +34,10 @@ def check():
     add("Claude Code", "Subagent model", bool(env.get("CLAUDE_CODE_SUBAGENT_MODEL")),
         env.get("CLAUDE_CODE_SUBAGENT_MODEL") or "inherits your main model",
         "Without it, subagents run on Opus or Fable whenever you switch up.")
+    forced = str(env.get("CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "")).lower() in ("1", "true", "yes")
+    add("Claude Code", "Subagent models per role", not forced, "forced for every subagent" if forced else "per agent file",
+        "CLAUDE_CODE_SUBAGENT_MODEL_FORCE moves every subagent, the code-writing one included, to one model.",
+        "remove CLAUDE_CODE_SUBAGENT_MODEL_FORCE from env; set `model:` in each agent file (tke setup roles)")
     explore = config.claude_home() / "agents" / "Explore.md"
     exp_text = explore.read_text(encoding="utf-8") if explore.exists() else ""
     add("Claude Code", "Explore agent on a small model", "model: haiku" in exp_text,

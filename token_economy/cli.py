@@ -168,18 +168,91 @@ def cmd_statusline(a):
 
 def cmd_setup(a):
     targets = a.target or ["claude", "codex"]
-    bad = [t for t in targets if t not in ("claude", "codex", "project")]
+    bad = [t for t in targets if t not in ("claude", "codex", "project", "roles")]
     if bad:
-        sys.exit("tke setup: unknown target %s (choose from claude, codex, project)" % ", ".join(bad))
+        sys.exit("tke setup: unknown target %s (choose from claude, codex, project, roles)" % ", ".join(bad))
     for t in targets:
         print("\n== %s" % t)
         if t == "claude":
             files, notes = setup.plan_claude(force=a.force, statusline=not a.no_statusline)
         elif t == "codex":
             files, notes = setup.plan_codex(force=a.force, model=a.codex_model)
+        elif t == "roles":
+            tools = [x.strip() for x in a.tools.split(",") if x.strip()]
+            unknown = [x for x in tools if x not in setup.ROLE_FILES]
+            if unknown:
+                sys.exit("tke setup roles: unknown tool %s (choose from claude, codex, copilot)" % ", ".join(unknown))
+            files, notes = setup.plan_roles(a.dir, tools, force=a.force)
         else:
             files, notes = setup.plan_project(a.dir)
         setup.run(files, notes, a.apply)
+
+
+def cmd_agents(a):
+    from . import agents
+    if a.prompt:
+        from .setup import _cmd
+        print(agents.REVIEW_PROMPT.format(cmd=_cmd().rstrip(), template="\n".join("   " + l for l in agents.BRIEF_TEMPLATE.splitlines())))
+        return
+    now = report.local_now()
+    since = since_for(a.period, now)
+    chk = agents.setup_check(a.dir)
+    sessions, runs = agents.usage(since, project_filter=a.project)
+    summ = agents.summarize(sessions, runs)
+    leaks = agents.findings(sessions, runs, summ)
+    if a.json:
+        weakest = sorted([r for r in runs if r["has_brief"] and agents.UNSEEN not in r["brief_missing"]],
+                         key=lambda r: (-len(r["brief_missing"]), -r["cost"]))[:a.top]
+        print(json.dumps({"setup": chk, "summary": summ, "codex": agents.codex_usage(since), "findings": [{"dollars": d, "text": t} for d, t in leaks],
+                          "weakest_briefs": weakest, "brief_template": agents.BRIEF_TEMPLATE}, default=str, indent=2))
+        return
+    print("Subagent economy · %s · prices as of %s · API-equivalent list prices\n" % (a.period, prices.PRICES_DATE))
+
+    print("Setup (%s)" % ("user files and %s" % a.dir if a.dir else "user files; add --dir <repo> for a project"))
+    for g in chk["general"]:
+        print("  %s %s" % ("!!" if g["level"] == "bad" else "- ", g["text"]))
+    if not chk["agents"]:
+        print("  no agent files found. `tke setup roles --dir <repo>` writes implementer, scoper and reviewer.")
+    for ag in chk["agents"]:
+        warn = [f for f in ag["findings"] if f["level"] != "info"]
+        info = [f for f in ag["findings"] if f["level"] == "info"]
+        print("  %-8s %-7s %-22s %-20s %s" % (ag["tool"], ag["scope"], ag["name"][:22], str(ag["model"])[:20],
+                                              "ok" if not warn else "%d to fix" % len(warn)))
+        for f in warn + (info if a.verbose else []):
+            print("      - " + f["text"])
+
+    total = summ["lead"] + summ["sub"]
+    print("\nClaude Code usage: %d sessions, %d used subagents, %d subagent runs" % (summ["sessions"], summ["with_subagents"], summ["runs"]))
+    if total:
+        print("  %-32s %10s  %3.0f%%" % ("lead conversations", money(summ["lead"]), 100 * summ["lead"] / total))
+        print("  %-32s %10s  %3.0f%%" % ("subagents", money(summ["sub"]), 100 * summ["sub"] / total))
+    if summ["types"]:
+        print("\n  %-20s %5s %10s %8s %8s %7s  %s" % ("subagent type", "runs", "cost", "per run", "report", "briefs", "models"))
+        for t in summ["types"][:12]:
+            print("  %-20s %5d %10s %8s %7dc %3d/%-3d  %s" % (
+                t["type"][:20], t["runs"], money(t["cost"]), money(t["avg"]), t["avg_report"],
+                t["briefs_ok"], t["briefs"], ", ".join(t["models"])[:40]))
+        print("  (report = average characters returned to the lead; briefs = briefs with all four parts / briefs seen)")
+
+    if leaks:
+        print("\nWhat to change")
+        for d, t in leaks:
+            print("  -> " + t)
+    if a.brief:
+        weakest = sorted([r for r in runs if r["has_brief"] and r["brief_missing"] and agents.UNSEEN not in r["brief_missing"]], key=lambda r: (-len(r["brief_missing"]), -r["cost"]))[:a.top]
+        print("\nWeakest briefs (missing parts, cost of the run)")
+        for r in weakest:
+            print("  %8s  %-18s %s\n            missing: %s" % (money(r["cost"]), r["type"][:18], (r["description"] or "")[:60],
+                                                            ", ".join(r["brief_missing"])))
+        print("\nThe brief template:\n" + "\n".join("  " + l for l in agents.BRIEF_TEMPLATE.splitlines()))
+    cx = agents.codex_usage(since)
+    if cx["lead"] or cx["sub"]:
+        ct = cx["lead"] + cx["sub"]
+        print("\nCodex usage: lead %s (%.0f%%), subagents %s (%.0f%%)" % (money(cx["lead"], "cr"), 100 * cx["lead"] / ct,
+                                                                         money(cx["sub"], "cr"), 100 * cx["sub"] / ct))
+        for t in cx["types"][:8]:
+            print("  %-20s %5d runs %12s  %s" % (t["type"][:20], t["runs"], money(t["cost"], "cr"), ", ".join(t["models"])))
+    print("\nCopilot CLI usage isn't read here (its logs don't record per-agent cost); its agent files are checked above.")
 
 
 def cmd_uninstall(a):
@@ -251,13 +324,25 @@ def main(argv=None):
 
     p = sub.add_parser("setup", help="apply the recommended settings (dry run unless --apply)")
     # no choices=: Python 3.8 argparse rejects an empty list against choices
-    p.add_argument("target", nargs="*", help="claude | codex | project (default: claude codex)")
+    p.add_argument("target", nargs="*", help="claude | codex | project | roles (default: claude codex)")
     p.add_argument("--apply", action="store_true", help="write the changes (backups are made)")
     p.add_argument("--force", action="store_true", help="replace values you already set")
     p.add_argument("--no-statusline", action="store_true")
     p.add_argument("--codex-model", help="everyday Codex model (default gpt-6.1-sol)")
-    p.add_argument("--dir", default=".", help="project folder for the 'project' target")
+    p.add_argument("--dir", default=".", help="project folder for the 'project' and 'roles' targets")
+    p.add_argument("--tools", default="claude,codex,copilot", help="for 'roles': which tools get agent files")
     p.set_defaults(fn=cmd_setup)
+
+    p = sub.add_parser("agents", help="subagent audit: agent files, lead vs subagent spend, brief quality")
+    p.add_argument("period", nargs="?", default="month", help="today | week | month | Nd (e.g. 30d)")
+    p.add_argument("--dir", help="also check this repo's agent files (.claude, .codex, .github)")
+    p.add_argument("--project", help="only sessions whose project folder contains this text")
+    p.add_argument("--brief", action="store_true", help="list the weakest briefs and the template")
+    p.add_argument("--prompt", action="store_true", help="print a review prompt for any agent (Claude, Codex, Copilot)")
+    p.add_argument("--top", type=int, default=8)
+    p.add_argument("--verbose", "-v", action="store_true", help="also show minor notes")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_agents)
 
     p = sub.add_parser("uninstall", help="remove tke hooks and status line from Claude Code")
     p.add_argument("--apply", action="store_true")

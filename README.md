@@ -1,6 +1,6 @@
 # ai-token-economy
 
-**Make a monthly AI coding budget last the month.** `tke` reads the logs that Claude Code and Codex already write on your machine, tells you where the tokens went and when the budget will run out, and applies the settings and hooks that stop the biggest leaks.
+**Make a monthly AI coding budget last the month.** `tke` reads the logs that Claude Code and Codex already write on your machine, tells you where the tokens went and when the budget will run out, and applies the settings and hooks that stop the biggest leaks. It also audits how you use subagents and sets up cheap, role-based subagents for Claude Code, Codex and Copilot CLI.
 
 It runs offline, has no dependencies (Python 3.8+ standard library), and **never calls a model, so it spends zero tokens.**
 
@@ -81,7 +81,58 @@ Changes made from the page need a per-launch token that only the page receives, 
 | `tke estimate --model claude-opus-5-5 --calls 110 --start 32 --end 290 --breaks 5` | Price a session before you run it. |
 | `tke bench <source-dir> gpt-oss:20b` | Time a local Ollama model reading an agent-sized prompt, GPU on and off, to see whether local is usable on this machine. |
 | `tke ui` | The local control centre (see above). |
+| `tke agents [period] [--dir repo] [--brief]` | Subagent audit: agent files for Claude Code, Codex and Copilot CLI, lead against subagent spend, cost per subagent type, the weakest briefs. `--prompt` prints a review prompt for any agent; `--json` for scripts. |
+| `tke setup roles --dir repo` | Write implementer, scoper and reviewer agent files for Claude Code, Codex and Copilot CLI, and the subagent rules to `CLAUDE.md` and `AGENTS.md`. Dry run unless `--apply`. |
 | `tke uninstall --apply` | Remove tke's hooks and status line from Claude Code. |
+
+## Subagents
+
+A subagent saves money only when its own model is cheaper than the lead's, its brief is complete enough
+that it doesn't re-discover the task, and its report is short enough not to bloat the lead's context. In a
+182-run test of seven lead/subagent setups on real bug fixes (Opus 5.5, Sonnet 5.5, Haiku 5.5), the lead's
+model moved the bill most: a Sonnet lead cost 69% less per task than an Opus lead and solved a similar number.
+Routing subagents inside an Opus session saved 5% to 34%. Haiku workers were the cheapest, but solved fewer
+tasks when they wrote the code.
+
+```bash
+python tke.py agents --dir path/to/repo --brief    # what's set up, where the money went, the weakest briefs
+python tke.py setup roles --dir path/to/repo       # preview the role files (changes nothing)
+python tke.py setup roles --dir path/to/repo --apply
+```
+
+**What `tke agents` flags**
+
+- Agent files with no model (they run on your main model, often Opus), read-only agents on Opus or Fable,
+  code-writing agents on Haiku, Haiku agents with no `maxTurns` (Haiku 5.5 costs 5x per token once a request
+  passes 100K tokens), agents with every tool allowed, and agents with no report format.
+- `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`: it moves every subagent to one model, the code-writing one included.
+- From your transcripts: lead against subagent spend, general-purpose subagents that inherited Opus or Fable,
+  Opus sessions that ran a long edit-and-test loop themselves, Haiku requests over 100K tokens, long reports,
+  and the same subagent started again and again instead of continued.
+- Briefs that leave out two or more of: where to look, the check that proves it's done, limits, the report
+  format. If a brief points to a local instructions file ("read your brief first: path/task.md"), that file counts.
+- Codex: spend split between the lead and each subagent (each subagent writes its own log that names its
+  parent). Copilot CLI's agent files are checked; its spend isn't read.
+
+**What `tke setup roles` writes** (existing files are kept unless `--force`)
+
+| Role | Claude Code `.claude/agents/` | Codex `.codex/agents/` | Copilot CLI `.github/agents/` |
+|---|---|---|---|
+| implementer: writes code from a plan, runs tests | `sonnet`, medium effort | `gpt-6.1-sol`, medium | `Claude Sonnet 5.5` |
+| scoper / explorer: finds code and tests, read-only | `haiku`, `maxTurns: 12`, plan mode | `explorer` on `gpt-6-luna`, low | `Claude Haiku 5.5` |
+| reviewer: checks the diff, read-only | `sonnet` (run it on opus for risky changes) | `gpt-6.1-sol`, medium | `Claude Sonnet 5.5` |
+
+Every role ends with a report of at most 15 lines. `CLAUDE.md` and `AGENTS.md` get the routing rules and a
+five-line brief template (goal, where, done when, limits, report).
+
+- **Codex:** in Codex 0.160 the lead could only choose a custom agent's model with `multi_agent_v2 = true` under
+  `[features]` in `~/.codex/config.toml`, and by default it copied the whole conversation into the subagent.
+  The `AGENTS.md` rule asks for `fork_turns "none"`, which it followed in testing.
+- **Copilot CLI:** model names follow its model picker. If your organisation hides a model, edit the `model:` line.
+
+`tke setup claude` also installs a `/subagent-review` skill: it runs `tke agents --json` in a repo, then proposes
+a diff to the agent files and rewrites a weak brief or two as examples. For Codex or Copilot, paste the output of
+`tke agents --prompt` instead.
 
 ## What `setup` changes
 
@@ -97,6 +148,7 @@ Nothing until you pass `--apply`. Every edited file is backed up next to itself 
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000` | Compact at 200k instead of near 1M, as a backstop. |
 | `BASH_MAX_OUTPUT_LENGTH`, `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS` = 15000 | Smaller caps on one command's output and one file read. |
 | `~/.claude/agents/Explore.md` | Runs the Explore subagent on Haiku 5.5 at low effort: searches cost cents, not dollars. |
+| `~/.claude/skills/subagent-review/` | The `/subagent-review` skill (see Subagents). |
 | Status line | Model, session cost, today against your daily budget, month against budget. |
 | Hooks | See below. |
 

@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from token_economy import estimate, hooks, logs, prices, report, route, setup, trim  # noqa: E402
+from token_economy import agents, estimate, hooks, logs, prices, report, route, setup, trim  # noqa: E402
 
 
 def write_jsonl(path, rows):
@@ -220,6 +220,121 @@ class Setup(unittest.TestCase):
                 del os.environ["CODEX_HOME"]
 
 
+def spawn_row(ts, tid, atype, prompt, desc="task"):
+    return {"type": "assistant", "timestamp": ts, "sessionId": "s1", "requestId": "rq" + tid,
+            "message": {"id": "sp" + tid, "model": "claude-opus-5-5", "usage": {"input_tokens": 1, "output_tokens": 10},
+                        "content": [{"type": "tool_use", "id": tid, "name": "Agent",
+                                     "input": {"subagent_type": atype, "prompt": prompt, "description": desc}}]}}
+
+
+class Agents(unittest.TestCase):
+    GOOD = ("Goal: total() must multiply price by qty.\nWhere: shop/cart.py:3\nDone when: pytest -q tests/test_cart.py passes.\n"
+            "Limits: don't edit outside shop/.\nReport in at most 15 lines: files changed, test results.")
+
+    def test_frontmatter_and_agent_checks(self):
+        meta, body = agents.frontmatter("---\nname: x\ndescription: Use for search\nmodel: haiku\ntools:\n  - Read\n  - Grep\n---\nbody")
+        self.assertEqual((meta["model"], meta["tools"], body), ("haiku", ["Read", "Grep"], "body"))
+        p = Path("a.md")
+        r = agents.check_claude_agent(p, {"name": "finder", "description": "Use to find code", "model": "opus",
+                                          "tools": "Read, Grep"}, "Report in at most 10 lines.", None)
+        self.assertTrue(any("top rate" in f["text"] for f in r["findings"]))
+        r = agents.check_claude_agent(p, {"name": "impl", "description": "Use to write code", "model": "haiku"}, "do it", None)
+        texts = " ".join(f["text"] for f in r["findings"])
+        for bit in ("writes code on Haiku", "maxTurns", "report format", "every tool"):
+            self.assertIn(bit, texts)
+        for t in (setup.TEMPLATES / "roles" / "claude").glob("*.md"):
+            meta, body = agents.frontmatter(t.read_text())
+            warn = [f for f in agents.check_claude_agent(t, meta, body, None)["findings"] if f["level"] != "info"]
+            self.assertEqual(warn, [], t.name)
+
+    def test_brief_scoring(self):
+        self.assertEqual(agents.score_brief(self.GOOD, "implementer")[0], [])
+        missing, _ = agents.score_brief("Fix the cart bug please", "general-purpose")
+        self.assertIn("done-when check", missing)
+        self.assertTrue(any(m.startswith("very short") for m in missing))
+        # a review brief isn't asked for a test command
+        missing, _ = agents.score_brief("Review shop/cart.py. Do not edit files. When done, report: findings with file:line.",
+                                        "general-purpose", "Review the cart change")
+        self.assertEqual(missing, [])
+        with tempfile.TemporaryDirectory() as d:
+            ref = Path(d, "brief.md")
+            ref.write_text("Done when pytest -q passes. Don't touch other files. Reply in under 15 lines.")
+            self.assertEqual(agents.score_brief("Implement task 3 in shop/cart.py.\nRead your brief first: %s" % ref)[0], [])
+            gone = agents.score_brief("Implement task 3 in shop/cart.py.\nRead your brief first: %s/missing.md" % d)[0]
+            self.assertEqual(gone, [agents.UNSEEN])
+
+    def test_usage_split_and_findings(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            proj = home / "projects" / "-repo"
+            write_jsonl(proj / "s1.jsonl", [
+                spawn_row("2026-10-01T10:00:00Z", "t1", "general-purpose", "look into the cart"),
+                spawn_row("2026-10-01T10:00:01Z", "t2", "implementer", self.GOOD),
+                claude_row("2026-10-01T10:00:02Z", "m1", "r1", read=0, w5=20000)])
+            sub = proj / "s1" / "subagents"
+            write_jsonl(sub / "agent-a.jsonl", [claude_row("2026-10-01T10:01:00Z", "m2", "r2", read=0, w5=50000, side=True)])
+            (sub / "agent-a.meta.json").write_text(json.dumps({"agentType": "general-purpose", "toolUseId": "t1"}))
+            write_jsonl(sub / "agent-b.jsonl", [claude_row("2026-10-01T10:02:00Z", "m3", "r3", read=0, w5=200000,
+                                                           model="claude-haiku-5-5", side=True)])
+            (sub / "agent-b.meta.json").write_text(json.dumps({"agentType": "implementer", "toolUseId": "t2"}))
+            sessions, runs = agents.usage(home=home)
+            self.assertEqual((len(sessions), len(runs)), (1, 2))
+            by = {r["type"]: r for r in runs}
+            self.assertTrue(by["general-purpose"]["brief_missing"])
+            self.assertEqual(by["implementer"]["brief_missing"], [])
+            self.assertEqual(by["implementer"]["haiku_long"], 1)
+            summ = agents.summarize(sessions, runs)
+            self.assertAlmostEqual(summ["lead"] + summ["sub"], sum(c.cost for c in logs.claude_calls(home=home)))
+            text = " ".join(t for _, t in agents.findings(sessions, runs, summ))
+            self.assertIn("general-purpose subagent runs on Opus", text)
+            self.assertIn("over 100K", text)
+
+    def test_force_flag_codex_v2_and_codex_split(self):
+        with tempfile.TemporaryDirectory() as d:
+            home, cx, cp = Path(d, "claude"), Path(d, "codex"), Path(d, "copilot")
+            home.mkdir()
+            (home / "settings.json").write_text(json.dumps({"env": {"CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+                                                                    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"}}))
+            (cx / "agents").mkdir(parents=True)
+            (cx / "config.toml").write_text('model = "gpt-6.1-sol"\n')
+            (cx / "agents" / "e.toml").write_text('name = "explorer"\nmodel = "gpt-6-luna"\n'
+                                                   'developer_instructions = """Report in at most 10 lines."""\n')
+            chk = agents.setup_check(None, home, cx, cp)
+            levels = {g["level"] for g in chk["general"]}
+            self.assertIn("bad", levels)
+            self.assertTrue(any("multi_agent_v2" in g["text"] for g in chk["general"]))
+            day = cx / "sessions" / "2026" / "10" / "01"
+            tc = lambda ts, n: {"timestamp": ts, "type": "event_msg", "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": n, "cached_input_tokens": 0, "output_tokens": 10}}}}
+            write_jsonl(day / "rollout-a-P.jsonl", [
+                {"type": "session_meta", "payload": {"id": "P", "source": "exec"}},
+                {"type": "turn_context", "payload": {"model": "gpt-6.1-sol"}}, tc("2026-10-01T10:00:00Z", 1000)])
+            write_jsonl(day / "rollout-b-C.jsonl", [
+                {"type": "session_meta", "payload": {"id": "C", "source": {"subagent": {"thread_spawn": {
+                    "parent_thread_id": "P", "agent_path": "/root/explorer"}}}}},
+                {"type": "turn_context", "payload": {"model": "gpt-6-luna"}}, tc("2026-10-01T10:00:05Z", 4000)])
+            u = agents.codex_usage(home=cx)
+            self.assertEqual([t["type"] for t in u["types"]], ["explorer"])
+            self.assertEqual(u["types"][0]["models"], ["gpt-6-luna"])
+            self.assertGreater(u["lead"], 0)
+
+    def test_roles_setup_writes_three_tools_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "CLAUDE.md").write_text("# Mine\n")
+            with redirect_stdout(io.StringIO()):
+                setup.run(*setup.plan_roles(d), apply=True)
+                files, _ = setup.plan_roles(d)
+            self.assertEqual(files, [])                                   # second run changes nothing
+            for rel in (".claude/agents/scoper.md", ".codex/agents/explorer.toml", ".github/agents/implementer.agent.md"):
+                self.assertTrue(Path(d, rel).exists(), rel)
+            text = Path(d, "CLAUDE.md").read_text()
+            self.assertTrue(text.startswith("# Mine") and "tke:delegation" in text)
+            chk = agents.setup_check(d, Path(d, "nohome"), Path(d, "nocodex"), Path(d, "nocopilot"))
+            warn = [f for a in chk["agents"] for f in a["findings"] if f["level"] != "info"]
+            self.assertEqual((len(chk["agents"]), warn), (9, []))
+            self.assertIn("name: subagent-review", setup.review_skill())
+
+
 class Route(unittest.TestCase):
     def test_first_yes_wins(self):
         self.assertEqual(route.decide({"check": True, "hard": True}), "fast")
@@ -237,7 +352,8 @@ class FreshMachine(unittest.TestCase):
                        CLAUDE_CONFIG_DIR=os.path.join(d, ".claude"), CODEX_HOME=os.path.join(d, ".codex"))
             for args in (["init", "--claude", "500", "--codex", "13000"], ["report"], ["report", "week", "--json"],
                          ["status"], ["statusline"], ["setup"], ["setup", "claude", "codex", "project", "--dir", d],
-                         ["route", "--check"], ["estimate"], ["uninstall"]):
+                         ["route", "--check"], ["estimate"], ["uninstall"], ["agents"], ["agents", "7d", "--dir", d, "--brief"],
+                         ["agents", "--json"], ["agents", "--prompt"], ["setup", "roles", "--dir", d]):
                 r = subprocess.run([sys.executable, str(ROOT / "tke.py")] + args, env=env, cwd=d, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 self.assertEqual(r.returncode, 0, "tke %s: %s" % (" ".join(args), r.stderr))

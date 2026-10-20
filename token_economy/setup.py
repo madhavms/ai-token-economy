@@ -121,7 +121,18 @@ def plan_claude(force=False, statusline=True):
         notes.append("Explore subagent on Haiku 5.5 at low effort (overrides the built-in): %s" % explore)
     else:
         notes.append("kept your existing %s" % explore)
+    skill = home / "skills" / "subagent-review" / "SKILL.md"
+    if not skill.exists() or skill.read_text(encoding="utf-8") != review_skill():
+        files.append((skill, review_skill()))
+    notes.append("skill /subagent-review: audits a repo's subagent files and briefs, proposes a diff: %s" % skill)
     return files, notes
+
+
+def review_skill():
+    from . import agents
+    body = agents.REVIEW_PROMPT.format(cmd=_cmd().rstrip(), template="\n".join("   " + l for l in agents.BRIEF_TEMPLATE.splitlines()))
+    return ("---\nname: subagent-review\ndescription: Use when asked to review, audit or cut the cost of how this "
+            "repository uses subagents (agent files, models per role, briefs).\n---\n" + body)
 
 
 def unplan_claude():
@@ -204,6 +215,43 @@ def plan_project(cwd):
     if not spec.exists():
         files.append((spec, (TEMPLATES / "SPEC.md").read_text(encoding="utf-8")))
         notes.append("create a spec template: %s" % spec)
+    return files, notes
+
+
+ROLE_FILES = {
+    "claude": (".claude/agents", "claude", ".md"),
+    "codex": (".codex/agents", "codex", ".toml"),
+    "copilot": (".github/agents", "copilot", ".agent.md"),
+}
+
+
+def plan_roles(cwd, tools=("claude", "codex", "copilot"), force=False):
+    """Role-based subagent files for a repo, committed and reviewed like code."""
+    cwd = Path(cwd)
+    files, notes = [], []
+    for tool in tools:
+        dest, src, ext = ROLE_FILES[tool]
+        for t in sorted((TEMPLATES / "roles" / src).glob("*" + ext)):
+            p = cwd / dest / t.name
+            if p.exists() and not force:
+                notes.append("kept your existing %s (--force to replace)" % p)
+                continue
+            files.append((p, t.read_text(encoding="utf-8")))
+            notes.append("%s %s" % ("replace" if p.exists() else "create", p))
+    block = (TEMPLATES / "delegation.md").read_text(encoding="utf-8")
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        p = cwd / name
+        text = p.read_text(encoding="utf-8") if p.exists() else ""
+        if "tke:delegation" in text:
+            notes.append("%s already has the subagent rules" % name)
+            continue
+        files.append((p, (text.rstrip() + "\n\n" if text.strip() else "") + block))
+        notes.append("%s %s with the subagent rules and the brief template" % ("append to" if text else "create", p))
+    if "codex" in tools:
+        notes.append("Codex: custom agents need `multi_agent_v2 = true` under [features] in ~/.codex/config.toml "
+                     "(tested on Codex 0.160)")
+    if "copilot" in tools:
+        notes.append("Copilot model names follow its model picker; if your org hides a model, edit the `model:` line")
     return files, notes
 
 
