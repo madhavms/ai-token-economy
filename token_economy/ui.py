@@ -240,6 +240,11 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/":
                 html = (WEB / "index.html").read_text(encoding="utf-8").replace("__TKE_TOKEN__", TOKEN)
                 return self._send(200, html.encode(), "text/html; charset=utf-8")
+            if u.path == "/learn":
+                page = WEB.parent.parent / "docs" / "basics.html"
+                if page.exists():
+                    return self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+                return self._send(404, b"The basics page ships with the git clone (docs/basics.html).", "text/plain")
             if u.path == "/api/summary":
                 return self._send(200, summary(q.get("period", "month"), q.get("refresh") == "1"))
             if u.path == "/api/session":

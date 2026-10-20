@@ -27,6 +27,11 @@ Most expensive sessions (month)
 
 The ideas behind it, with sources and diagrams: **[AI Token Economy](https://madhavms.github.io/knowledge-graph/ai-engineering/ai-token-economy.html)**. In short: a coding agent re-sends the whole conversation on every call, so the bill is set by how big that conversation gets, whether it is read from the prompt cache, and which model reads it.
 
+**New to this?** [The Basics Under the Bill](docs/basics.html) explains, from first principles, what a model, a token,
+an API call, the prompt cache, an agent, CLAUDE.md and a subagent are, how each is priced, and how they add up to the
+bill, with diagrams and numbers measured with the real Claude Code CLI. Open it from a clone, or from the dashboard
+(`tke ui` → *Learn the basics*). `docs/basics/measure.py` re-measures it; `docs/basics/build.py` rebuilds it.
+
 ## Quick start
 
 Works the same on Windows, macOS and Linux. You need Python 3.8 or newer and git; nothing else is installed.

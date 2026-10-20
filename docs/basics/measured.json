@@ -1,0 +1,399 @@
+{
+  "date": "2026-10-20",
+  "prices_date": "2026-10-13",
+  "claude_version": "2.1.304 (Claude Code)",
+  "startup_minimal": 20225,
+  "startup_full": 29504,
+  "hello_first": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 3355,
+    "cache_read_input_tokens": 16868,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 3355
+    },
+    "output_tokens": 4,
+    "service_tier": "standard",
+    "inference_geo": "global",
+    "speed": "standard"
+  },
+  "hello_second": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 20223,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 4,
+    "service_tier": "standard",
+    "inference_geo": "global",
+    "speed": "standard"
+  },
+  "claude_md_tokens": 355,
+  "claude_md_chars": 480,
+  "claude_md_lines": 13,
+  "hello_cost_minimal": 0.015150799999999999,
+  "english_chars": 481,
+  "english_tokens": 125,
+  "code_chars": 878,
+  "code_tokens": 345,
+  "english_words": 85,
+  "toy": {
+    "cost": 0.030636600000000003,
+    "lead_cost": 0.030636600000000003,
+    "sub_cost": 0,
+    "calls": 3,
+    "reported_cost": 0.0306366,
+    "peak": 21689,
+    "startup_tokens": 19832,
+    "categories": {
+      "startup": 0.01750651581271015,
+      "user": 0.00011966872918954458,
+      "attach": 0.003150226809630029,
+      "output": 0.0054800000000000005,
+      "assistant": 0.0015086168524799525,
+      "read": 0.0018385371876114545,
+      "edit": 0.0006979963570127504,
+      "bash": 0.0003350382513661202
+    },
+    "models": {
+      "claude-sonnet-5-5": 0.030636600000000003
+    },
+    "rows": [
+      {
+        "i": 0,
+        "prompt": 20611,
+        "read": 16868,
+        "new": 3743,
+        "out": 211,
+        "cost": 0.0187648,
+        "c_read": 0.0016868000000000002,
+        "c_write": 0.014968,
+        "c_out": 0.0021100000000000003,
+        "w1h": 3741,
+        "tools": [
+          "Read",
+          "Read"
+        ],
+        "model": "claude-sonnet-5-5"
+      },
+      {
+        "i": 1,
+        "prompt": 21211,
+        "read": 20609,
+        "new": 602,
+        "out": 282,
+        "cost": 0.0072849,
+        "c_read": 0.0020609,
+        "c_write": 0.002404,
+        "c_out": 0.00282,
+        "w1h": 600,
+        "tools": [
+          "Edit",
+          "Bash"
+        ],
+        "model": "claude-sonnet-5-5"
+      },
+      {
+        "i": 2,
+        "prompt": 21689,
+        "read": 21209,
+        "new": 480,
+        "out": 55,
+        "cost": 0.0045869000000000005,
+        "c_read": 0.0021209,
+        "c_write": 0.001916,
+        "c_out": 0.00055,
+        "w1h": 478,
+        "tools": [],
+        "model": "claude-sonnet-5-5"
+      }
+    ],
+    "items": [
+      {
+        "cat": "startup",
+        "label": "Startup context",
+        "tokens": 19832,
+        "carried": 3,
+        "cost": 0.01750651581271015
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: agent_listing_delta",
+        "tokens": 387,
+        "carried": 2,
+        "cost": 0.0016281245523945935
+      },
+      {
+        "cat": "read",
+        "label": "Read repo/tests/test_cart.py",
+        "tokens": 235,
+        "carried": 1,
+        "cost": 0.0009631739594800305
+      },
+      {
+        "cat": "assistant",
+        "label": "Claude's reply",
+        "tokens": 221,
+        "carried": 0,
+        "cost": 0.0008829653916211293
+      },
+      {
+        "cat": "read",
+        "label": "Read repo/shop/cart.py",
+        "tokens": 213,
+        "carried": 1,
+        "cost": 0.0008753632281314238
+      },
+      {
+        "cat": "edit",
+        "label": "Edit repo/shop/cart.py",
+        "tokens": 174,
+        "carried": 0,
+        "cost": 0.0006979963570127504
+      },
+      {
+        "cat": "assistant",
+        "label": "Claude's reply",
+        "tokens": 152,
+        "carried": 1,
+        "cost": 0.0006256514608588233
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: instructions",
+        "tokens": 119,
+        "carried": 2,
+        "cost": 0.0005028186077350163
+      },
+      {
+        "cat": "bash",
+        "label": "Bash: python3 -m unittest -q 2>&1 | tail -5",
+        "tokens": 83,
+        "carried": 0,
+        "cost": 0.0003350382513661202
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: deferred_tools_delta",
+        "tokens": 73,
+        "carried": 2,
+        "cost": 0.0003086193542256676
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: session_context",
+        "tokens": 72,
+        "carried": 2,
+        "cost": 0.000303370725752442
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: environment",
+        "tokens": 62,
+        "carried": 2,
+        "cost": 0.000262431423661282
+      }
+    ],
+    "subagents": [],
+    "passes": true
+  },
+  "toy_sub": {
+    "cost": 0.033277335,
+    "lead_cost": 0.032493299999999996,
+    "sub_cost": 0.0007840350000000001,
+    "calls": 3,
+    "reported_cost": 0.033448835,
+    "peak": 22157,
+    "startup_tokens": 19858,
+    "categories": {
+      "startup": 0.017616811886622792,
+      "user": 0.00019420029566546732,
+      "attach": 0.003297206101001259,
+      "output": 0.005410000000000001,
+      "assistant": 0.00285656283324082,
+      "agent": 0.0022791284072791874,
+      "edit": 0.0004890361904761905,
+      "bash": 0.0003503542857142857,
+      "subagents": 0.0007840350000000001
+    },
+    "models": {
+      "claude-sonnet-5-5": 0.032493299999999996,
+      "claude-haiku-5-5": 0.0007840350000000001
+    },
+    "rows": [
+      {
+        "i": 0,
+        "prompt": 20690,
+        "read": 16868,
+        "new": 3822,
+        "out": 183,
+        "cost": 0.0188008,
+        "c_read": 0.0016868000000000002,
+        "c_write": 0.015283999999999999,
+        "c_out": 0.0018300000000000002,
+        "w1h": 3820,
+        "tools": [
+          "Agent"
+        ],
+        "model": "claude-sonnet-5-5"
+      },
+      {
+        "i": 1,
+        "prompt": 21679,
+        "read": 20688,
+        "new": 991,
+        "out": 298,
+        "cost": 0.009008799999999999,
+        "c_read": 0.0020688,
+        "c_write": 0.003959999999999999,
+        "c_out": 0.0029800000000000004,
+        "w1h": 989,
+        "tools": [
+          "Edit",
+          "Bash"
+        ],
+        "model": "claude-sonnet-5-5"
+      },
+      {
+        "i": 2,
+        "prompt": 22157,
+        "read": 21677,
+        "new": 480,
+        "out": 60,
+        "cost": 0.0046837,
+        "c_read": 0.0021677000000000003,
+        "c_write": 0.001916,
+        "c_out": 0.0006000000000000001,
+        "w1h": 478,
+        "tools": [],
+        "model": "claude-sonnet-5-5"
+      }
+    ],
+    "items": [
+      {
+        "cat": "startup",
+        "label": "Startup context",
+        "tokens": 19858,
+        "carried": 3,
+        "cost": 0.017616811886622792
+      },
+      {
+        "cat": "agent",
+        "label": "Agent: Find cause of failing test",
+        "tokens": 556,
+        "carried": 1,
+        "cost": 0.0022791284072791874
+      },
+      {
+        "cat": "assistant",
+        "label": "Claude's reply",
+        "tokens": 434,
+        "carried": 1,
+        "cost": 0.001779953309431296
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: agent_listing_delta",
+        "tokens": 422,
+        "carried": 2,
+        "cost": 0.0017750956755151637
+      },
+      {
+        "cat": "assistant",
+        "label": "Claude's reply",
+        "tokens": 269,
+        "carried": 0,
+        "cost": 0.0010766095238095238
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: instructions",
+        "tokens": 119,
+        "carried": 2,
+        "cost": 0.0005028213060743722
+      },
+      {
+        "cat": "edit",
+        "label": "Edit repo/shop/cart.py",
+        "tokens": 122,
+        "carried": 0,
+        "cost": 0.0004890361904761905
+      },
+      {
+        "cat": "bash",
+        "label": "Bash: python3 -m unittest -q 2>&1 | tail -5",
+        "tokens": 87,
+        "carried": 0,
+        "cost": 0.0003503542857142857
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: deferred_tools_delta",
+        "tokens": 73,
+        "carried": 2,
+        "cost": 0.00030862101040890483
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: session_context",
+        "tokens": 72,
+        "carried": 2,
+        "cost": 0.00030337235376929765
+      },
+      {
+        "cat": "attach",
+        "label": "Attachment: environment",
+        "tokens": 62,
+        "carried": 2,
+        "cost": 0.0002624328319803613
+      },
+      {
+        "cat": "user",
+        "label": "Your message",
+        "tokens": 46,
+        "carried": 2,
+        "cost": 0.00019420029566546732
+      }
+    ],
+    "subagents": [
+      {
+        "type": "scoper",
+        "description": "Find cause of failing test",
+        "cost": 0.0007840350000000001,
+        "calls": 2,
+        "by_model": {
+          "claude-haiku-5-5": 0.0007840350000000001
+        },
+        "by_day": {
+          "2026-10-20": 0.0007840350000000001
+        },
+        "models": [
+          "claude-haiku-5-5"
+        ],
+        "peak": 5055,
+        "start": "2026-10-20T08:15:05+00:00"
+      }
+    ],
+    "sub_calls": [
+      {
+        "prompt": 4453,
+        "read": 0,
+        "new": 4453,
+        "out": 213,
+        "cost": 0.0006630750000000001,
+        "model": "claude-haiku-5-5"
+      },
+      {
+        "prompt": 5055,
+        "read": 4451,
+        "new": 604,
+        "out": 2,
+        "cost": 0.00012096000000000001,
+        "model": "claude-haiku-5-5"
+      }
+    ],
+    "passes": true
+  }
+}

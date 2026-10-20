@@ -565,6 +565,12 @@ class UI(unittest.TestCase):
         self.assertIn("summary", json.loads(self.req("/api/agents?period=month")[1]))
         self.assertIn("mcp", json.loads(self.req("/api/mcp")[1])["command"])
 
+    def test_learn_page_is_served(self):
+        code, body = self.req("/learn")
+        self.assertEqual(code, 200)
+        self.assertIn(b"The Basics Under the Bill", body)
+        self.assertNotIn(b"{{", body)                                    # every placeholder was filled
+
     def test_writes_need_the_token_and_a_local_host(self):
         self.assertEqual(self.req("/api/budget", {"claude_budget_usd": 1})[0], 403)
         self.assertEqual(self.req("/api/summary", host="evil.example")[0], 403)

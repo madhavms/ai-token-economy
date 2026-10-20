@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Basics Under the Bill</title>
+<meta name="description" content="What a language model, a token, an API call, the prompt cache, an agent, CLAUDE.md and a subagent are, how each is priced, and how they glue together into the bill: the groundwork for the AI token economy. Every number measured with the real Claude Code CLI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Architects+Daughter&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+
+/* Knowledge Graph page style (the blueprint look), copied from the KG library.
+   Layout: one reading column on dotted drafting paper. Each idea runs the same beats:
+   wall → idea → see it → build it → in Kept → confusions → do it → say it → sources. */
+:root{
+  --kg-bg:#EDF2F9; --kg-dot:#C3D2E8; --kg-card:#FAFCFF; --kg-panel:#F0F5FB;
+  --kg-ink:#14315E; --kg-ink-2:#33507E; --kg-muted:#56709A; --kg-line:#B4C6E0; --kg-line-2:#93AACD;
+  --kg-hi:#C4511B; --kg-accent:#B5531C; --kg-ok:#2F7D5B; --kg-cool:#1D6F94;
+  --kg-display:"Archivo Narrow","Arial Narrow",system-ui,sans-serif;
+  --kg-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --kg-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --kg-hand:"Architects Daughter","Comic Sans MS",cursive;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --kg-bg:#0B1D39; --kg-dot:#1D3863; --kg-card:#112A52; --kg-panel:#0F2547;
+    --kg-ink:#E4EDF9; --kg-ink-2:#C3D3EC; --kg-muted:#9FB6D8; --kg-line:#2B4C7C; --kg-line-2:#3C639A;
+    --kg-hi:#FFA36B; --kg-accent:#FF9F5A; --kg-ok:#7FD6A9; --kg-cool:#5CC8E6; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --kg-bg:#0B1D39; --kg-dot:#1D3863; --kg-card:#112A52; --kg-panel:#0F2547;
+  --kg-ink:#E4EDF9; --kg-ink-2:#C3D3EC; --kg-muted:#9FB6D8; --kg-line:#2B4C7C; --kg-line-2:#3C639A;
+  --kg-hi:#FFA36B; --kg-accent:#FF9F5A; --kg-ok:#7FD6A9; --kg-cool:#5CC8E6; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background-color:var(--kg-bg);background-image:radial-gradient(var(--kg-dot) 1.1px,transparent 1.4px);background-size:18px 18px;color:var(--kg-ink);font:17px/1.65 var(--kg-body);padding-inline:clamp(16px,4vw,48px);padding-block:40px 96px}
+a{color:var(--kg-ink);text-decoration-color:var(--kg-line-2);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--kg-hi)}
+:focus-visible{outline:2px solid var(--kg-hi);outline-offset:3px}
+h1,h2,h3{font-family:var(--kg-display);text-wrap:balance;margin:0;line-height:1.08}
+h1{font-size:clamp(2.5rem,6.5vw,4.2rem);text-transform:uppercase;font-weight:700;letter-spacing:-.005em}
+h2{font-size:clamp(1.55rem,3.4vw,2.1rem);text-transform:uppercase;font-weight:700;letter-spacing:.01em}
+h3{font-size:1.15rem;font-weight:600;letter-spacing:.02em}
+p{margin:0;max-width:68ch}
+ul,ol{margin:0;padding-left:1.3em;max-width:68ch}
+li+li{margin-top:.35em}
+code{font-family:var(--kg-mono);font-size:.88em;background:var(--kg-panel);border:1px solid var(--kg-line);padding:0 .3em}
+b,strong{font-weight:600}
+.page{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:64px}
+.label{font-family:var(--kg-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--kg-muted)}
+.hand{font-family:var(--kg-hand);color:var(--kg-hi)}
+
+/* hero + title block */
+.hero{display:flex;flex-direction:column;gap:16px;border-bottom:1.5px solid var(--kg-ink);padding-bottom:28px}
+.lede{font-size:1.18rem;color:var(--kg-ink-2)}
+.tblock{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1.5px solid var(--kg-ink);background:var(--kg-card);font-size:.92rem;margin-top:8px}
+.tblock>div{padding:10px 12px;border-right:1px solid var(--kg-line);border-bottom:1px solid var(--kg-line);min-width:0}
+.tblock>div:nth-child(2n){border-right:0}
+.tblock>div:nth-last-child(-n+2){border-bottom:0}
+.tblock b{display:block;font-family:var(--kg-mono);font-weight:500;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--kg-muted);margin-bottom:2px}
+
+/* sections and beats */
+section{display:flex;flex-direction:column;gap:18px;scroll-margin-top:16px}
+.beat{display:flex;align-items:center;gap:10px}
+.beat span{font-family:var(--kg-mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;border:1.5px solid var(--kg-ink);padding:2px 8px}
+.motto{font-family:var(--kg-hand);font-size:1.3rem;color:var(--kg-hi);line-height:1.4;max-width:60ch}
+.callout{border:1.5px solid var(--kg-hi);background:var(--kg-card);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.callout .label{color:var(--kg-hi)}
+
+/* figures (inline SVG inked with the tokens) */
+figure{margin:0}
+.fig{border:1px dashed var(--kg-line-2);background:color-mix(in srgb,var(--kg-card) 75%,transparent);padding:14px;overflow-x:auto}
+.fig svg{display:block;width:100%;height:auto;min-width:600px}
+.fig figcaption{font-family:var(--kg-mono);font-size:.74rem;color:var(--kg-muted);margin-top:10px;letter-spacing:.04em;line-height:1.5}
+svg text{fill:var(--kg-ink);font-family:var(--kg-body);font-size:14px}
+svg .t-s{font-family:var(--kg-mono);font-size:12px;fill:var(--kg-muted)}
+svg .t-b{font-family:var(--kg-display);font-weight:700;font-size:16px;letter-spacing:.03em;text-transform:uppercase}
+svg .t-m{font-family:var(--kg-mono);font-size:13px}
+svg .t-h{font-family:var(--kg-hand);font-size:16px;fill:var(--kg-hi)}
+svg .box{fill:var(--kg-card);stroke:var(--kg-ink);stroke-width:1.6}
+svg .frozen{fill:url(#hatch);stroke:var(--kg-ink);stroke-width:1.6}
+svg .train{fill:color-mix(in srgb,var(--kg-hi) 22%,var(--kg-card));stroke:var(--kg-hi);stroke-width:2}
+svg .data{fill:var(--kg-card);stroke:var(--kg-cool);stroke-width:2}
+svg .ln{stroke:var(--kg-ink);stroke-width:1.6;fill:none}
+svg .ln-d{stroke:var(--kg-muted);stroke-width:1.3;fill:none;stroke-dasharray:5 4}
+svg .ln-hi{stroke:var(--kg-hi);stroke-width:1.8;fill:none}
+svg .hatch-line{stroke:var(--kg-line-2);stroke-width:1}
+svg .ah{fill:var(--kg-ink)} svg .ah-hi{fill:var(--kg-hi)}
+
+/* build it: number traces, code */
+.trace{border:1.5px solid var(--kg-ink);background:var(--kg-card);overflow-x:auto}
+.trace table{border-collapse:collapse;width:100%;min-width:520px;font-size:.95rem}
+.trace th,.trace td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--kg-line);vertical-align:top}
+.trace th{font-family:var(--kg-mono);font-weight:500;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--kg-muted);background:var(--kg-panel)}
+.trace tr:last-child td{border-bottom:0}
+.num{font-family:var(--kg-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+pre.code{margin:0;background:var(--kg-card);border:1.5px solid var(--kg-ink);padding:14px 16px;overflow-x:auto;font:13.5px/1.6 var(--kg-mono);color:var(--kg-ink)}
+pre.code .c{color:var(--kg-muted)}
+pre.out{border-style:dashed;border-color:var(--kg-line-2);background:var(--kg-panel)}
+
+/* interactive widget */
+.widget{border:1.5px solid var(--kg-ink);background:var(--kg-card);padding:18px;display:flex;flex-direction:column;gap:16px}
+.widget .controls{display:flex;flex-wrap:wrap;gap:18px 28px;align-items:end}
+.widget label{display:flex;flex-direction:column;gap:6px;font-family:var(--kg-mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--kg-muted)}
+.widget input[type=range]{width:220px;accent-color:var(--kg-hi)}
+.widget select{font:inherit;font-family:var(--kg-mono);font-size:.85rem;color:var(--kg-ink);background:var(--kg-panel);border:1px solid var(--kg-line-2);padding:5px 8px}
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));border:1px solid var(--kg-line)}
+.readout div{padding:10px 12px;border-right:1px solid var(--kg-line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.readout div:last-child{border-right:0}
+.readout b{font-family:var(--kg-display);font-size:1.6rem;line-height:1.05;font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar{display:grid;grid-template-columns:150px minmax(0,1fr) 90px;gap:10px;align-items:center;font-size:.85rem}
+.bar .track{height:14px;background:var(--kg-panel);border:1px solid var(--kg-line);position:relative}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--kg-ink)}
+.bar .fill.hi{background:var(--kg-hi)}
+.bar .v{font-family:var(--kg-mono);font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
+
+/* confusions, do it, say it */
+.confusions{display:flex;flex-direction:column;gap:0;border:1.5px solid var(--kg-ink);background:var(--kg-card)}
+.confusions>div{padding:14px 16px;border-bottom:1px solid var(--kg-line);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px}
+.confusions>div:last-child{border-bottom:0}
+.confusions .myth{font-weight:600}
+.confusions .myth::before{content:"✗ ";color:var(--kg-hi)}
+.do{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:18px;counter-reset:q;max-width:none}
+.do>li{counter-increment:q;border:1.5px solid var(--kg-ink);background:var(--kg-card);padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.do>li::before{content:"Problem " counter(q);font-family:var(--kg-mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--kg-muted)}
+.do details{border-top:1px dashed var(--kg-line-2);padding-top:10px}
+.do summary{cursor:pointer;font-family:var(--kg-mono);font-size:.8rem;color:var(--kg-hi)}
+.do details>div{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.say{border:1.5px solid var(--kg-ink);background:var(--kg-card);display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.say>div{padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.say>div+div{border-left:1px solid var(--kg-line)}
+.say .script{font-size:1.08rem}
+.say .one{font-family:var(--kg-display);font-size:2.6rem;font-weight:700;line-height:1;color:var(--kg-hi)}
+.sources{font-size:.9rem;color:var(--kg-ink-2)}
+.sources li+li{margin-top:.5em}
+.next{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1.5px solid var(--kg-ink);padding-top:16px;font-family:var(--kg-mono);font-size:.82rem}
+
+@media (max-width:640px){
+  body{font-size:16px}
+  .tblock{grid-template-columns:1fr}
+  .tblock>div{border-right:0!important}
+  .tblock>div:nth-last-child(2){border-bottom:1px solid var(--kg-line)}
+  .confusions>div,.say{grid-template-columns:1fr}
+  .say>div+div{border-left:0;border-top:1px solid var(--kg-line)}
+  .bar{grid-template-columns:100px minmax(0,1fr) 70px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* additions for this page */
+:root{--viz-1:#2a78d6;--viz-2:#eb6834}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926}}
+:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926}
+svg .zone{fill:none;stroke:var(--kg-line-2);stroke-width:1.2;stroke-dasharray:6 5}
+svg .logo{fill:var(--kg-ink)} svg .logo.claude{fill:#D97757}
+svg .ah-d{fill:var(--kg-muted)}
+svg .grid{stroke:var(--kg-line);stroke-width:1}
+svg .viz-line{fill:none;stroke-width:2.5;stroke-linejoin:round}
+svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--kg-mono);font-size:.74rem;color:var(--kg-muted);margin-top:8px}
+.key i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px}
+.trace tr.sum td{background:var(--kg-panel)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.two>div{border:1.5px solid var(--kg-ink);background:var(--kg-card);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.two h3{font-size:1rem}
+#calc .readout{grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr))}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips span{font-family:var(--kg-mono);font-size:.78rem;border:1px solid var(--kg-line-2);background:var(--kg-panel);padding:2px 8px}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    <marker id="ah-hi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-hi"/></marker>
+    <marker id="ah-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-d"/></marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--kg-card)"/><line x1="0" y1="0" x2="0" y2="8" class="hatch-line"/></pattern>
+    <symbol id="i-claude" viewBox="0 0 24 24"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></symbol><symbol id="i-anthropic" viewBox="0 0 24 24"><path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"/></symbol><symbol id="i-githubcopilot" viewBox="0 0 24 24"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></symbol><symbol id="i-python" viewBox="0 0 24 24"><path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09zm13.09 3.95l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01zm-6.47 14.25l-.23.33-.08.41.08.41.23.33.33.23.41.08.41-.08.33-.23.23-.33.08-.41-.08-.41-.23-.33-.33-.23-.41-.08-.41.08z"/></symbol>
+  </defs>
+</svg>
+
+<main class="page">
+
+<header class="hero">
+  <span class="label">AI Engineering · Before the token economy</span>
+  <h1>The Basics Under the Bill</h1>
+  <p class="lede">A coding agent's bill is not a mystery and not a flat fee. It is a handful of simple ideas multiplied together: a model that remembers nothing, text counted in tokens, a conversation sent again on every call, a cache that makes the repeat cheap, and instructions and helpers that ride along. This page builds those ideas one at a time, on one small task you can trace by hand, with every number measured.</p>
+  <div class="tblock">
+    <div><b>What it covers</b>Models, tokens, API calls, prices, the prompt cache, agents, CLAUDE.md, subagents, and where everything lives</div>
+    <div><b>Measured with</b>Claude Code 2.1.304 on 2026-10-20, Sonnet 5.5 and Haiku 5.5; prices as of 2026-10-13</div>
+    <div><b>Leads to</b><a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy</a> · <a href="https://github.com/madhavms/ai-token-economy">the tke tool</a></div>
+    <div><b>Time</b>About 25 minutes</div>
+  </div>
+</header>
+
+<section id="big-picture">
+  <div class="beat"><span>The big picture</span></div>
+  <h2>One picture, then the parts</h2>
+  <p>Every diagram on this page uses the same marks, so learn them once:</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 116" role="img" aria-label="Legend for every diagram on the page"><rect x="10" y="14" width="96" height="34" class="frozen"/><text x="116" y="30" class="t-b">fixed</text><text x="116" y="46" class="t-s">loaded before you type</text><rect x="300" y="14" width="96" height="34" class="data"/><text x="406" y="30" class="t-b">carried</text><text x="406" y="46" class="t-s">already in the context</text><rect x="590" y="14" width="96" height="34" class="train"/><text x="696" y="30" class="t-b">new</text><text x="696" y="46" class="t-s">added on this call</text><rect x="10" y="70" width="96" height="34" class="box"/><text x="116" y="86" class="t-b">a program</text><text x="116" y="102" class="t-s">harness, model, tool</text><line x1="300" y1="87" x2="390" y2="87" class="ln" marker-end="url(#ah)"/><text x="406" y="86" class="t-b">every call</text><text x="406" y="102" class="t-s">solid line</text><line x1="590" y1="87" x2="680" y2="87" class="ln-d" marker-end="url(#ah-d)"/><text x="696" y="86" class="t-b">once</text><text x="696" y="102" class="t-s">dashed line</text></svg>
+    <figcaption>FIG 0 · The diagram language. Hatched = fixed text loaded before you type. Blue outline = text already in the conversation, carried from call to call. Orange = new on this call. Plain box = a program. Solid line = happens on every call. Dashed line = happens once.</figcaption>
+  </figure>
+  <figure class="fig">
+    <svg viewBox="0 0 880 460" role="img" aria-label="The big picture: you, the harness, the context it sends on every call, the model, the cache and the bill"><rect x="8" y="8" width="570" height="444" class="zone"/><text x="20" y="28" class="t-s">Your machine</text><rect x="600" y="8" width="272" height="444" class="zone"/><text x="612" y="28" class="t-s">Anthropic</text><rect x="24" y="48" width="110" height="56" class="box"/><text x="79" y="72" class="t-b" text-anchor="middle">You</text><text x="79" y="92" class="t-s" text-anchor="middle">type a task</text><rect x="170" y="40" width="390" height="72" class="box"/><use href="#i-claude" x="184" y="54" width="26" height="26" class="logo claude"/><text x="222" y="66" class="t-b">The harness</text><text x="222" y="86" class="t-s">Claude Code · Codex · Copilot CLI</text><text x="222" y="102" class="t-s">keeps the conversation, runs tools</text><line x1="134" y1="76" x2="168" y2="76" class="ln" marker-end="url(#ah)"/><text x="170" y="142" class="t-s">What every call sends</text><rect x="170" y="152" width="300" height="32" class="frozen"/><text x="182" y="173">System prompt + tool list</text><rect x="170" y="192" width="300" height="32" class="frozen"/><text x="182" y="213">CLAUDE.md, memory, skill list</text><rect x="170" y="232" width="300" height="32" class="data"/><text x="182" y="253">Messages, replies, tool results</text><rect x="170" y="272" width="300" height="32" class="train"/><text x="182" y="293">New since the last call</text><text x="480" y="262" class="t-m">~20.2K</text><text x="480" y="278" class="t-s">tokens</text><text x="480" y="294" class="t-s">before</text><text x="480" y="310" class="t-s">you type</text><rect x="170" y="360" width="390" height="72" class="box"/><text x="184" y="386" class="t-b">Your repo</text><text x="184" y="406" class="t-s">files, tests, the shell</text><text x="184" y="422" class="t-s">where tools run</text><line x1="330" y1="112" x2="330" y2="150" class="ln" marker-end="url(#ah)"/><path d="M 470 312 L 470 356" class="ln" marker-end="url(#ah)"/><text x="478" y="340" class="t-s">run a tool</text><path d="M 250 358 L 250 318" class="ln" marker-end="url(#ah)"/><text x="258" y="340" class="t-s">its output</text><rect x="624" y="150" width="224" height="76" class="box"/><use href="#i-anthropic" x="638" y="166" width="22" height="22" class="logo anthropic"/><text x="670" y="182" class="t-b">The model</text><text x="638" y="206" class="t-s">Opus · Sonnet · Haiku</text><text x="638" y="220" class="t-s">remembers nothing</text><rect x="624" y="256" width="224" height="64" class="data"/><text x="638" y="280" class="t-b">Prompt cache</text><text x="638" y="302" class="t-s">recent prompts, 5 min or 1 h</text><rect x="624" y="350" width="224" height="82" class="train"/><text x="638" y="374" class="t-b">The bill, per call</text><text x="638" y="396" class="t-m">read × read price</text><text x="638" y="412" class="t-m">+ new × write price</text><text x="638" y="428" class="t-m">+ output × output price</text><line x1="470" y1="200" x2="620" y2="188" class="ln" marker-end="url(#ah)"/><text x="490" y="176" class="t-s">every call</text><path d="M 624 168 C 590 120 590 80 564 76" class="ln" marker-end="url(#ah)"/><text x="610" y="110" class="t-s">reply or</text><text x="610" y="124" class="t-s">tool call</text><line x1="736" y1="226" x2="736" y2="252" class="ln" marker-end="url(#ah)"/><line x1="736" y1="320" x2="736" y2="346" class="ln" marker-end="url(#ah)"/></svg>
+    <figcaption>FIG 1 · You type once. The <b>harness</b> (the program you run: Claude Code, Codex or Copilot CLI) builds the whole context and sends it to the model on every call. The model replies or asks for a tool. The harness runs the tool in your repo, adds the result, and calls again. Each call is billed by what it reads, what is new, and what it writes back.</figcaption>
+  </figure>
+  <h3>The 60-second answer</h3>
+  <ul>
+    <li><b>The model remembers nothing.</b> To take one more step, the harness re-sends everything: instructions, tools, CLAUDE.md, every file read and every command output so far.</li>
+    <li><b>You pay per token, per call.</b> A token is a piece of a word (English averages 3.8 characters a token, code 2.5). Output costs 5× input.</li>
+    <li><b>The cache makes repeats cheap.</b> Text sent seconds ago is read back at 0.05× the input price on Sonnet 5.5. After a pause longer than the cache's lifetime it is written again at full price.</li>
+    <li><b>Before you type, the context is already 20.2K tokens</b> (Claude Code's own instructions and tools), and 29.5K with plugins and skills installed. CLAUDE.md rides on top of that, on every call.</li>
+    <li><b>A subagent is a fresh, small context</b> that does a side job and returns a short report, so the lead's context doesn't grow. It saves money only when that side job is big.</li>
+  </ul>
+</section>
+
+<section id="model">
+  <div class="beat"><span>1 · The model</span></div>
+  <h2>A function that predicts the next token</h2>
+  <p>A <b>large language model</b> (LLM) is a very large function. You give it text; it returns its best guess at the next small piece of text. To write a sentence it runs again and again, each time with the text so far plus the piece it just added. That repeat-until-done is called <b>generation</b>.</p>
+  <p>Two facts about it set the whole bill:</p>
+  <ul>
+    <li><b>It is stateless.</b> Between calls it keeps nothing: no memory of you, your repo or the last answer. Whatever it should know has to be in the text you send this time.</li>
+    <li><b>Reading is cheaper than writing.</b> The text you send is processed in one parallel pass. Each token it writes back needs its own pass. That is why output is priced at 5× input.</li>
+  </ul>
+  <div class="callout"><span class="label">The toy for the whole page</span>
+    <p>A tiny repo: <code>shop/cart.py</code> has a bug (the cart total ignores quantity), <code>tests/test_cart.py</code> catches it, and a 13-line <code>CLAUDE.md</code> says how to run the tests. We ask Claude Code: <i>"The test fails. Find out why and fix it."</i> It is in this repo under <code>docs/basics/toy/</code>; <code>docs/basics/measure.py</code> runs it.</p>
+  </div>
+</section>
+
+<section id="tokens">
+  <div class="beat"><span>2 · Tokens</span></div>
+  <h2>Text is counted in tokens</h2>
+  <p>The model doesn't see letters or words. A <b>tokenizer</b> cuts text into <b>tokens</b>: common words are one token, rare words and code split into several pieces. Every limit and every price is in tokens.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 196" role="img" aria-label="A sentence split into tokens, and measured tokens per 1,000 characters for English and Python"><rect x="10" y="14" width="57" height="34" class="data"/><text x="38.5" y="36" class="t-m" text-anchor="middle">Every</text><rect x="73" y="14" width="57" height="34" class="data"/><text x="101.5" y="36" class="t-m" text-anchor="middle">·call</text><rect x="136" y="14" width="65.6" height="34" class="data"/><text x="168.8" y="36" class="t-m" text-anchor="middle">·sends</text><rect x="207.6" y="14" width="48.4" height="34" class="data"/><text x="231.8" y="36" class="t-m" text-anchor="middle">·the</text><rect x="262" y="14" width="65.6" height="34" class="data"/><text x="294.8" y="36" class="t-m" text-anchor="middle">·whole</text><rect x="333.6" y="14" width="82.8" height="34" class="data"/><text x="375" y="36" class="t-m" text-anchor="middle">·convers</text><rect x="422.4" y="14" width="57" height="34" class="data"/><text x="450.9" y="36" class="t-m" text-anchor="middle">ation</text><rect x="485.4" y="14" width="65.6" height="34" class="data"/><text x="518.2" y="36" class="t-m" text-anchor="middle">·again</text><rect x="557" y="14" width="22.6" height="34" class="data"/><text x="568.3" y="36" class="t-m" text-anchor="middle">.</text><text x="10" y="72" class="t-s">Illustration only: the real split is the tokenizer&#x27;s. The counts below are measured.</text><text x="10" y="119">English</text><rect x="130" y="98" width="311.9" height="30" class="data"/><text x="451.9" y="118" class="t-m">260 tokens per 1,000 characters</text><text x="451.9" y="134" class="t-s">481 chars → 125 tokens</text><text x="10" y="165">Python code</text><rect x="130" y="144" width="471.5" height="30" class="train"/><text x="611.5" y="164" class="t-m">393 tokens per 1,000 characters</text><text x="611.5" y="180" class="t-s">878 chars → 345 tokens</text></svg>
+    <figcaption>FIG 2 · Measured by sending the same prompt with and without a block of text and reading the difference in the API's token count. English: 481 characters (85 words) = 125 tokens, so about 3.8 characters or 1.47 tokens per word. Python: 878 characters = 345 tokens, 2.5 characters each. Code costs more per character than prose.</figcaption>
+  </figure>
+  <p>Rule of thumb from these numbers: a page of English prose (about 3,000 characters) is roughly 800 tokens; the same length of code is closer to 1,200.</p>
+</section>
+
+<section id="call">
+  <div class="beat"><span>3 · One call</span></div>
+  <h2>Every call sends everything again</h2>
+  <p>An <b>API call</b> is one request to the model. It carries three things, in this order: the <b>tool definitions</b> (what the model may ask to run), the <b>system prompt</b> (standing instructions), and the <b>messages</b> (the conversation so far, including every tool result). The reply comes back with four counts, and these four numbers are the whole bill:</p>
+  <div class="chips"><span>input_tokens</span><span>cache_read_input_tokens</span><span>cache_creation_input_tokens</span><span>output_tokens</span></div>
+  <p>Because the model is stateless, the second call contains the first call's text, plus the reply, plus the tool result. The toy task took 3 calls:</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 220" role="img" aria-label="The three calls of the toy task: each re-sends the whole context"><text x="10" y="38" class="t-b">Call 1</text><rect x="110" y="16" width="495.8" height="32" class="frozen"/><rect x="605.8" y="16" width="19.5" height="32" class="train"/><text x="122" y="37" class="t-m">startup 19.8K</text><text x="637.3" y="30" class="t-m">20,611 tokens sent</text><text x="637.3" y="46" class="t-s">16.9K from cache, 3.7K new</text><text x="10" y="100" class="t-b">Call 2</text><rect x="110" y="78" width="495.8" height="32" class="frozen"/><rect x="605.8" y="78" width="19.5" height="32" class="data"/><rect x="625.3" y="78" width="15" height="32" class="train"/><text x="122" y="99" class="t-m">startup 19.8K</text><text x="652.3" y="92" class="t-m">21,211 tokens sent</text><text x="652.3" y="108" class="t-s">20.6K from cache, 602 new</text><text x="10" y="162" class="t-b">Call 3</text><rect x="110" y="140" width="495.8" height="32" class="frozen"/><rect x="605.8" y="140" width="34.5" height="32" class="data"/><rect x="640.3" y="140" width="12" height="32" class="train"/><text x="122" y="161" class="t-m">startup 19.8K</text><text x="664.2" y="154" class="t-m">21,689 tokens sent</text><text x="664.2" y="170" class="t-s">21.2K from cache, 480 new</text><text x="110" y="206" class="t-h">Each call re-sends everything. Only the orange part is new.</text></svg>
+    <figcaption>FIG 3 · The toy task, measured. Each call re-sends the startup context (hatched) and everything since (blue); only the orange slice is new. The peak was 21,689 tokens. Across the three calls 63,511 input tokens were sent and 92% of them came from the cache.</figcaption>
+  </figure>
+  <p>The <b>context window</b> is the most a single call can hold. When a long session approaches it, the harness <b>compacts</b>: it replaces the history with a written summary, and the next call starts from that smaller context.</p>
+</section>
+
+<section id="price">
+  <div class="beat"><span>4 · The price list</span></div>
+  <h2>Four prices per model</h2>
+  <p>Each token in a call is charged one of four rates. <b>Input</b>: sent and not cached. <b>Cache write</b>: sent and stored for reuse (at 1.25× input for a 5-minute lifetime, 2× for 1 hour). <b>Cache read</b>: re-sent and found in the cache. <b>Output</b>: written by the model, thinking included.</p>
+  <div class="trace"><table>
+    <thead><tr><th>$ per million tokens</th><th>Input</th><th>Cache write 5 min</th><th>Cache write 1 h</th><th>Cache read</th><th>Output</th></tr></thead>
+    <tbody><tr><td><b>Opus 5.5</b></td><td class='num'>$4.00</td><td class='num'>$5.00</td><td class='num'>$8.00</td><td class='num'>$0.20</td><td class='num'>$20.00</td></tr><tr><td><b>Sonnet 5.5</b></td><td class='num'>$2.00</td><td class='num'>$2.50</td><td class='num'>$4.00</td><td class='num'>$0.10</td><td class='num'>$10.00</td></tr><tr><td><b>Haiku 5.5</b></td><td class='num'>$0.10</td><td class='num'>$0.125</td><td class='num'>$0.20</td><td class='num'>$0.01</td><td class='num'>$0.50</td></tr><tr><td><b>Fable 5.1</b></td><td class='num'>$10.00</td><td class='num'>$12.50</td><td class='num'>$20.00</td><td class='num'>$0.25</td><td class='num'>$50.00</td></tr></tbody>
+  </table></div>
+  <ul>
+    <li><b>Output is 5× input</b> on every model above. Long answers and long thinking are the expensive kind of token.</li>
+    <li><b>A cache read is 0.05× input</b> on Opus 5.5 and Sonnet 5.5, 0.1× on Haiku 5.5 and 0.025× on Fable 5.1. Reading 100,000 cached tokens on Sonnet costs $0.01; writing them costs $0.25 to $0.40.</li>
+    <li><b>Haiku 5.5 has a size step.</b> Once a single request passes 100,000 tokens, every Haiku rate is 5× (input $0.50 instead of $0.10).</li>
+    <li><b>Codex</b> is billed in credits with a cheaper rate for cached input and no separate charge for writing the cache. The ideas on this page carry over; the numbers differ.</li>
+    <li><b>On a subscription</b> you don't see per-token bills, but usage is counted in the same tokens; tools like <code>tke</code> price them at these list rates so sessions can be compared.</li>
+  </ul>
+</section>
+
+<section id="cache">
+  <div class="beat"><span>5 · The prompt cache</span></div>
+  <h2>The repeat is cheap, if it is recent and identical</h2>
+  <p>Since every call re-sends the same beginning, Anthropic keeps recently processed prompts in a <b>prompt cache</b> on its servers. On the next call, the longest <b>identical prefix</b> (the same text from the very first character) is read from the cache at the read price. Everything after the first difference is processed and written again.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 260" role="img" aria-label="How the prompt cache prices each call: a cached prefix is read cheaply, new text is written, and after a long pause everything is written again"><text x="10" y="36" class="t-b">Call 1</text><rect x="110" y="14" width="312" height="34" class="frozen"/><text x="120" y="36" class="t-s">cached by earlier sessions</text><rect x="422" y="14" width="208" height="34" class="train"/><text x="432" y="36" class="t-s">written: 1.25× or 2×</text><text x="644" y="36" class="t-s">first call</text><text x="10" y="92" class="t-b">Call 2</text><rect x="110" y="70" width="416" height="34" class="data"/><text x="120" y="92" class="t-s">read from cache: 0.05×</text><rect x="526" y="70" width="104" height="34" class="train"/><text x="536" y="92" class="t-s">new</text><text x="644" y="92" class="t-s">seconds later</text><text x="10" y="148" class="t-b">Call 3</text><rect x="110" y="126" width="468" height="34" class="data"/><text x="120" y="148" class="t-s">read from cache</text><rect x="578" y="126" width="52" height="34" class="train"/><text x="588" y="148" class="t-s">new</text><text x="10" y="224" class="t-b">Call 4</text><rect x="110" y="202" width="520" height="34" class="train"/><text x="120" y="224" class="t-s">the whole prompt written again: 1.25× or 2×</text><text x="644" y="224" class="t-s">after a long pause</text><line x1="110" y1="186" x2="630" y2="186" class="ln-d"/><text x="640" y="190" class="t-h">pause &gt; 5 min (or 1 h)</text></svg>
+    <figcaption>FIG 4 · Each call reads what is cached and writes what is new. A pause longer than the cache's lifetime empties it, so the next call writes the whole prompt again: a <b>cache rebuild</b>. Changing anything near the top (the tool list, CLAUDE.md, or the model) has the same effect, because the prefix no longer matches.</figcaption>
+  </figure>
+  <ul>
+    <li><b>Measured:</b> the very first call of a fresh session read 16,868 tokens from the cache and wrote 3,355. Claude Code's system prompt had been cached by earlier sessions on the same account. Run again straight away, the same call read 20,223 and wrote nothing.</li>
+    <li><b>Lifetime:</b> 5 minutes by default, refreshed every time the entry is used; 1 hour costs more to write. Claude Code on a subscription uses 1 hour for the main conversation and 5 minutes for subagents; with an API key or usage credits, 5 minutes unless you set <code>promptCacheTtl</code>.</li>
+    <li><b>Scope:</b> caches are shared within your organisation (and workspace), never across organisations, and only for prompts of at least 512 tokens on current models.</li>
+    <li><b>Switching models</b> mid-session misses the cache: each model has its own.</li>
+  </ul>
+</section>
+
+<section id="agent">
+  <div class="beat"><span>6 · The agent</span></div>
+  <h2>A model, some tools, and a loop</h2>
+  <p>An <b>agent</b> is a model that can act. The harness gives it <b>tools</b> (read a file, edit a file, run a shell command, search) and runs a simple <b>loop</b>: call the model; if it asks for a tool, run it, append the result, call again; if it just replies, stop.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 236" role="img" aria-label="The agent loop: the model asks for a tool, the harness runs it and calls the model again"><rect x="20" y="70" width="230" height="90" class="box"/><use href="#i-anthropic" x="34" y="86" width="22" height="22" class="logo anthropic"/><text x="66" y="102" class="t-b">The model</text><text x="34" y="128" class="t-s">reads the context,</text><text x="34" y="144" class="t-s">replies or asks for a tool</text><rect x="330" y="70" width="230" height="90" class="box"/><use href="#i-claude" x="344" y="86" width="24" height="24" class="logo claude"/><text x="378" y="102" class="t-b">The harness</text><text x="344" y="128" class="t-s">runs it, adds the result,</text><text x="344" y="144" class="t-s">calls the model again</text><rect x="650" y="30" width="120" height="34" class="box"/><text x="710" y="52" class="t-m" text-anchor="middle">Read</text><line x1="550" y1="115" x2="646" y2="47" class="ln" marker-end="url(#ah)"/><rect x="650" y="74" width="120" height="34" class="box"/><text x="710" y="96" class="t-m" text-anchor="middle">Edit</text><line x1="550" y1="115" x2="646" y2="91" class="ln" marker-end="url(#ah)"/><rect x="650" y="118" width="120" height="34" class="box"/><text x="710" y="140" class="t-m" text-anchor="middle">Bash</text><line x1="550" y1="115" x2="646" y2="135" class="ln" marker-end="url(#ah)"/><rect x="650" y="162" width="120" height="34" class="box"/><text x="710" y="184" class="t-m" text-anchor="middle">Grep</text><line x1="550" y1="115" x2="646" y2="179" class="ln" marker-end="url(#ah)"/><path d="M 240 92 C 280 60 300 60 326 86" class="ln" marker-end="url(#ah)"/><text x="250" y="52" class="t-s">tool call</text><path d="M 330 140 C 300 172 270 172 244 146" class="ln" marker-end="url(#ah)"/><text x="252" y="190" class="t-s">tool result</text><path d="M 130 160 L 130 220" class="ln-hi" marker-end="url(#ah-hi)"/><text x="142" y="212" class="t-h">no tool call: the reply goes to you, the loop ends</text></svg>
+    <figcaption>FIG 5 · The agent loop. Every turn round the loop is one API call, and every call re-sends the whole conversation. In the toy, call 1 asked for two reads at once (the code and the test), call 2 made the edit and ran the tests together, and call 3 replied. Claude Code, Codex and Copilot CLI all run this same loop with different tools and prompts.</figcaption>
+  </figure>
+  <p>That is why agents cost far more than chat: a task that takes 60 turns re-sends its growing context 60 times.</p>
+</section>
+
+<section id="context">
+  <div class="beat"><span>7 · What fills the context</span></div>
+  <h2>Startup context, CLAUDE.md and the rest</h2>
+  <p>Before the agent reads a single file, the first call already carries the harness's system prompt and the definitions of every tool, plus anything you've installed that adds to them.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 186" role="img" aria-label="What the startup context is made of, measured"><rect x="50" y="40" width="534.7" height="40" class="frozen"/><line x1="317.3" y1="80" x2="317.3" y2="104" class="ln-d"/><text x="58" y="116" class="t-m">Claude Code&#x27;s system prompt + tools · 20,225 tokens</text><rect x="584.7" y="40" width="9.4" height="40" class="train"/><line x1="589.4" y1="80" x2="589.4" y2="132" class="ln-d"/><text x="580.7" y="144" class="t-m" text-anchor="end">CLAUDE.md · 355 tokens</text><rect x="594.1" y="40" width="245.3" height="40" class="frozen"/><line x1="716.7" y1="80" x2="716.7" y2="160" class="ln-d"/><text x="837.4" y="172" class="t-m" text-anchor="end">plugins, skills, MCP · 9,279 tokens</text><text x="50" y="28" class="t-s">Before you type: measured in an empty folder</text></svg>
+    <figcaption>FIG 6 · Measured in an empty folder with the prompt "Reply with the single word OK". Claude Code's minimal setup: 20,225 tokens. Adding the toy's 13-line CLAUDE.md: +355 tokens (its text plus the wrapper Claude Code puts round it). The author's everyday setup with plugins, skills and MCP servers: 29,504 tokens, 9,279 more, on every call of every session.</figcaption>
+  </figure>
+  <h3>CLAUDE.md: standing instructions you write</h3>
+  <p><b>CLAUDE.md</b> is a plain Markdown file of instructions (how to run the tests, the rules of the codebase). Claude Code reads it at the start of every session and puts it in the context, so it rides along on every call, read from the cache.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 290" role="img" aria-label="Which instruction files Claude Code loads and when"><rect x="10" y="12" width="390" height="34" class="frozen"/><text x="22" y="34" class="t-m">Managed policy CLAUDE.md</text><text x="420" y="34" class="t-s">set by your company&#x27;s IT</text><line x1="690" y1="29" x2="760" y2="29" class="ln" marker-end="url(#ah)"/><rect x="10" y="58" width="390" height="34" class="frozen"/><text x="22" y="80" class="t-m">~/.claude/CLAUDE.md</text><text x="420" y="80" class="t-s">you, every project</text><line x1="690" y1="75" x2="760" y2="75" class="ln" marker-end="url(#ah)"/><rect x="10" y="104" width="390" height="34" class="frozen"/><text x="22" y="126" class="t-m">repo/CLAUDE.md or repo/.claude/CLAUDE.md</text><text x="420" y="126" class="t-s">the team, in git</text><line x1="690" y1="121" x2="760" y2="121" class="ln" marker-end="url(#ah)"/><rect x="10" y="150" width="390" height="34" class="frozen"/><text x="22" y="172" class="t-m">repo/CLAUDE.local.md</text><text x="420" y="172" class="t-s">you, this project, git-ignored</text><line x1="690" y1="167" x2="760" y2="167" class="ln" marker-end="url(#ah)"/><rect x="10" y="196" width="390" height="34" class="data"/><text x="22" y="218" class="t-m">repo/sub/CLAUDE.md</text><text x="420" y="218" class="t-s">loads when Claude works in sub/</text><line x1="690" y1="213" x2="760" y2="213" class="ln-d" marker-end="url(#ah-d)"/><rect x="10" y="242" width="390" height="34" class="frozen"/><text x="22" y="264" class="t-m">MEMORY.md (auto memory)</text><text x="420" y="264" class="t-s">Claude&#x27;s notes: 200 lines or 25 KB</text><line x1="690" y1="259" x2="760" y2="259" class="ln" marker-end="url(#ah)"/><rect x="764" y="12" width="108" height="264" class="box"/><text x="818" y="128" class="t-s" text-anchor="middle">the</text><text x="818" y="146" class="t-b" text-anchor="middle">context</text><text x="818" y="164" class="t-s" text-anchor="middle">every call</text></svg>
+    <figcaption>FIG 7 · Which files load. Files in your folder and every folder above it load at launch and are joined together, the closest to where you started read last. A sub-folder's CLAUDE.md loads only when Claude works in that folder. If a repo has AGENTS.md (the file Codex reads) and no CLAUDE.md, Claude Code reads AGENTS.md instead.</figcaption>
+  </figure>
+  <ul>
+    <li><b>Keep it under about 200 lines.</b> Anthropic's advice: longer files take more context and are followed less reliably. Move rules that apply to one part of the code into <code>.claude/rules/</code> with a path, so they load only there.</li>
+    <li><b>Imports don't save anything.</b> <code>@path/to/file</code> pulls a file in at launch, so it costs the same as pasting it.</li>
+    <li><b>HTML comments are free.</b> <code>&lt;!-- notes for humans --&gt;</code> are stripped before the file reaches the model.</li>
+    <li><b>The per-call cost is small, the attention cost isn't.</b> Read from the cache, the toy's 355-token CLAUDE.md costs $0.07 per thousand Opus calls. The real reasons to keep it short are adherence and the full re-write after every cache rebuild.</li>
+  </ul>
+  <p>After startup, the context fills with the work itself: your messages, the model's replies and tool calls, and above all <b>tool results</b>: the files it read and the command output it saw. A single unfiltered test log or a whole large file can outweigh everything else, and it is then re-read on every later call.</p>
+</section>
+
+<section id="trace">
+  <div class="beat"><span>8 · One task, priced</span></div>
+  <h2>The toy, call by call</h2>
+  <p>Here is the toy task's real bill on Sonnet 5.5, from the transcript Claude Code saved. Each row is one API call; the last three columns are what each kind of token cost.</p>
+  <div class="trace"><table>
+    <thead><tr><th>Call</th><th>Tools it asked for</th><th>Sent</th><th>From cache</th><th>New</th><th>Output</th><th>Read $</th><th>Write $</th><th>Output $</th></tr></thead>
+    <tbody><tr><td class='num'>1</td><td>Read, Read</td><td class='num'>20,611</td><td class='num'>16,868</td><td class='num'>3,743</td><td class='num'>211</td><td class='num'>$0.0017</td><td class='num'>$0.015</td><td class='num'>$0.0021</td></tr><tr><td class='num'>2</td><td>Edit, Bash</td><td class='num'>21,211</td><td class='num'>20,609</td><td class='num'>602</td><td class='num'>282</td><td class='num'>$0.0021</td><td class='num'>$0.0024</td><td class='num'>$0.0028</td></tr><tr><td class='num'>3</td><td>final reply</td><td class='num'>21,689</td><td class='num'>21,209</td><td class='num'>480</td><td class='num'>55</td><td class='num'>$0.0021</td><td class='num'>$0.0019</td><td class='num'>$0.0006</td></tr><tr class='sum'><td></td><td><b>Total</b></td><td class='num'>63,511</td><td class='num'>58,686</td><td class='num'>4,825</td><td class='num'>548</td><td class='num'>$0.0059</td><td class='num'>$0.019</td><td class='num'>$0.0055</td></tr></tbody>
+  </table></div>
+  <p>Total <b>$0.031</b> (Claude Code reported $0.031 for the same run). The tests passed. Of that, <b>57%</b> was the startup context: on a task this small, Claude Code's own instructions cost more than the work. The same tokens would cost <b>$0.061</b> on Opus 5.5 and <b>$0.0018</b> on Haiku 5.5.</p>
+  <div class="callout"><span class="label">The formula, now with every part named</span>
+    <p>cost of a call = tokens read from cache × read price + new tokens × write price + output tokens × output price. A session is that, summed over every call. Everything else on this page is about making one of those terms smaller.</p>
+  </div>
+</section>
+
+<section id="scale">
+  <div class="beat"><span>9 · When the session grows</span></div>
+  <h2>Long sessions pay for their history on every call</h2>
+  <p>Real tasks run for dozens of calls and the context keeps growing, so each call re-reads more. Modelled with <code>tke estimate</code> from the toy's measured start of 20,225 tokens, on Sonnet 5.5 with a 1-hour cache and 400 output tokens a call:</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 260" role="img" aria-label="Context per call in one long session against the same work in three fresh sessions"><line x1="60" x2="860" y1="226.0" y2="226.0" class="grid"/><text x="52" y="230" class="t-s" text-anchor="end">0</text><line x1="60" x2="860" y1="160.4" y2="160.4" class="grid"/><text x="52" y="164.4" class="t-s" text-anchor="end">50K</text><line x1="60" x2="860" y1="94.8" y2="94.8" class="grid"/><text x="52" y="98.8" class="t-s" text-anchor="end">100K</text><line x1="60" x2="860" y1="29.1" y2="29.1" class="grid"/><text x="52" y="33.1" class="t-s" text-anchor="end">150K</text><text x="60" y="248" class="t-s" text-anchor="middle">call 1</text><text x="317.6" y="248" class="t-s" text-anchor="middle">call 20</text><text x="588.8" y="248" class="t-s" text-anchor="middle">call 40</text><text x="860" y="248" class="t-s" text-anchor="end">call 60</text><path d="M60.0 199.5 L73.6 196.6 L87.1 193.7 L100.7 190.8 L114.2 187.9 L127.8 185.0 L141.4 182.1 L154.9 179.2 L168.5 176.4 L182.0 173.5 L195.6 170.6 L209.2 167.7 L222.7 164.8 L236.3 161.9 L249.8 159.0 L263.4 156.2 L276.9 153.3 L290.5 150.4 L304.1 147.5 L317.6 144.6 L331.2 141.7 L344.7 138.8 L358.3 135.9 L371.9 133.1 L385.4 130.2 L399.0 127.3 L412.5 124.4 L426.1 121.5 L439.7 118.6 L453.2 115.7 L466.8 112.8 L480.3 110.0 L493.9 107.1 L507.5 104.2 L521.0 101.3 L534.6 98.4 L548.1 95.5 L561.7 92.6 L575.3 89.8 L588.8 86.9 L602.4 84.0 L615.9 81.1 L629.5 78.2 L643.1 75.3 L656.6 72.4 L670.2 69.5 L683.7 66.7 L697.3 63.8 L710.8 60.9 L724.4 58.0 L738.0 55.1 L751.5 52.2 L765.1 49.3 L778.6 46.4 L792.2 43.6 L805.8 40.7 L819.3 37.8 L832.9 34.9 L846.4 32.0 L860.0 29.1" class="viz-line v1"/><path d="M60.0 199.5 L73.6 196.5 L87.1 193.5 L100.7 190.5 L114.2 187.5 L127.8 184.5 L141.4 181.5 L154.9 178.5 L168.5 175.5 L182.0 172.6 L195.6 169.6 L209.2 166.6 L222.7 163.6 L236.3 160.6 L249.8 157.6 L263.4 154.6 L276.9 151.6 L290.5 148.7 L304.1 145.7 L317.6 142.7 M331.2 199.5 L344.7 196.5 L358.3 193.5 L371.9 190.5 L385.4 187.5 L399.0 184.5 L412.5 181.5 L426.1 178.5 L439.7 175.5 L453.2 172.6 L466.8 169.6 L480.3 166.6 L493.9 163.6 L507.5 160.6 L521.0 157.6 L534.6 154.6 L548.1 151.6 L561.7 148.7 L575.3 145.7 L588.8 142.7 M602.4 199.5 L615.9 196.5 L629.5 193.5 L643.1 190.5 L656.6 187.5 L670.2 184.5 L683.7 181.5 L697.3 178.5 L710.8 175.5 L724.4 172.6 L738.0 169.6 L751.5 166.6 L765.1 163.6 L778.6 160.6 L792.2 157.6 L805.8 154.6 L819.3 151.6 L832.9 148.7 L846.4 145.7 L860.0 142.7" class="viz-line v2"/><text x="854" y="19.1" class="t-m" text-anchor="end">one long session: $1.34</text><text x="738" y="122.1" class="t-m" text-anchor="end">three fresh sessions: $1.23</text></svg>
+    <figcaption>FIG 8 · Context size per call. Blue: one session of 60 calls growing to 150,000 tokens, $1.34 ($0.50 reads, $0.60 writes, $0.24 output). Orange: the same work as three fresh sessions of 20 calls, each starting clean, $1.23, 8% less. On Opus 5.5 the long session is $2.67. With a 5-minute cache and three breaks it is $1.72, $0.65 of it rebuilds.</figcaption>
+  </figure>
+  <p>That is why <code>/clear</code> between tasks and a short handoff note beat one endless session, and why the cache lifetime matters most in long sessions.</p>
+</section>
+
+<section id="subagents">
+  <div class="beat"><span>10 · Subagents</span></div>
+  <h2>A fresh, small context for a side job</h2>
+  <p>A <b>subagent</b> is a second agent the lead starts for one job. It gets a <b>fresh context</b>: its own short system prompt (not Claude Code's), your CLAUDE.md files, and a <b>brief</b> the lead writes. It can run on a different model. When it finishes, only its <b>report</b> comes back into the lead's context; the files it read and the output it saw stay with it.</p>
+  <figure class="fig">
+    <svg viewBox="0 0 880 236" role="img" aria-label="A subagent starts with a small fresh context and returns only its report"><text x="10" y="24" class="t-b">Lead · sonnet-5-5</text><rect x="10" y="34" width="451.4" height="38" class="frozen"/><text x="22" y="58" class="t-m">20,690 tokens on its first call</text><path d="M 40 72 L 40 140" class="ln" marker-end="url(#ah)"/><text x="52" y="108" class="t-s">brief: what to find, how to report</text><rect x="10" y="144" width="97.2" height="38" class="data"/><text x="121.2" y="160" class="t-b">Subagent · haiku-5-5</text><text x="121.2" y="178" class="t-s">4,453 tokens: own short prompt + CLAUDE.md + brief</text><path d="M 60 182 C 60 226 640 226 640 130 C 640 84 600 53 465.4 53" class="ln-hi" marker-end="url(#ah-hi)"/><text x="652" y="168" class="t-h">report: about 556 tokens,</text><text x="652" y="188" class="t-h">all the lead keeps</text></svg>
+    <figcaption>FIG 9 · The toy again, with a <code>scoper</code> subagent on Haiku 5.5 asked to find the cause first. The subagent's first call was 4,453 tokens against the lead's 20,690; it took 2 calls and cost $0.0008. Its report entered the lead's context as about 556 tokens.</figcaption>
+  </figure>
+  <ul>
+    <li><b>On this tiny task it didn't save:</b> $0.033 in total against $0.031 without it (9% more), because the lead still paid for writing the brief and reading the report, and the job was only two small files.</li>
+    <li><b>It saves when the side job is big:</b> a search through many files or a long log, done on a cheaper model, while the lead's context stays small for every later call.</li>
+    <li><b>The model is set per subagent.</b> A <code>model:</code> line in its file wins; otherwise it uses the lead's model (or <code>CLAUDE_CODE_SUBAGENT_MODEL</code>). The built-in Explore agent runs on the main conversation's model, so a search on an Opus session is billed at Opus rates.</li>
+  </ul>
+</section>
+
+<section id="where">
+  <div class="beat"><span>11 · What lives where</span></div>
+  <h2>Your machine, and theirs</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 880 310" role="img" aria-label="What lives on your machine and what lives at the model provider"><rect x="8" y="8" width="420" height="270" class="zone"/><text x="22" y="32" class="t-b">On your machine</text><rect x="452" y="8" width="420" height="270" class="zone"/><text x="466" y="32" class="t-b">At Anthropic (or OpenAI)</text><rect x="22" y="48" width="392" height="34" class="frozen"/><text x="34" y="70" class="t-m">CLAUDE.md, CLAUDE.local.md, rules</text><rect x="22" y="92" width="392" height="34" class="frozen"/><text x="34" y="114" class="t-m">settings.json, agent files, skills</text><rect x="22" y="136" width="392" height="34" class="frozen"/><text x="34" y="158" class="t-m">Auto memory (MEMORY.md)</text><rect x="22" y="180" width="392" height="34" class="data"/><text x="34" y="202" class="t-m">Transcripts: ~/.claude/projects/…/*.jsonl</text><rect x="22" y="224" width="392" height="34" class="data"/><text x="34" y="246" class="t-m">Codex logs: ~/.codex/sessions/…</text><rect x="466" y="48" width="392" height="34" class="box"/><text x="478" y="70" class="t-m">The model itself</text><rect x="466" y="92" width="392" height="34" class="box"/><text x="478" y="114" class="t-m">Prompt cache: 5 min or 1 h, per org</text><rect x="466" y="136" width="392" height="34" class="box"/><text x="478" y="158" class="t-m">Usage and billing</text><line x1="428" y1="240" x2="452" y2="240" class="ln" marker-end="url(#ah)"/><text x="320" y="296" class="t-h" text-anchor="middle">Every call ships the context across. Nothing is remembered there except the cache.</text></svg>
+    <figcaption>FIG 10 · Everything you write and every transcript stays on your machine; the model and the prompt cache are at the provider. The "cache" is not a file on your laptop. The local transcripts are what <code>tke</code> reads to price every call after the fact.</figcaption>
+  </figure>
+</section>
+
+<section id="glue">
+  <div class="beat"><span>12 · How it glues together</span></div>
+  <h2>One formula, six levers</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 880 320" role="img" aria-label="How every idea on the page meets in one cost formula, and the six levers that move it"><rect x="250" y="110" width="380" height="92" class="train"/><text x="440" y="136" class="t-b" text-anchor="middle">cost of a session</text><text x="440" y="160" class="t-m" text-anchor="middle">Σ calls × ( carried × read price</text><text x="440" y="178" class="t-m" text-anchor="middle">+ new × write price + output × output price )</text><rect x="20" y="20" width="220" height="58" class="box"/><text x="32" y="44" class="t-b">Fewer calls</text><text x="32" y="64" class="t-s">batch questions, plan first</text><line x1="130" y1="78" x2="331.5" y2="110" class="ln" marker-end="url(#ah)"/><rect x="330" y="20" width="220" height="58" class="box"/><text x="342" y="44" class="t-b">Smaller context</text><text x="342" y="64" class="t-s">/clear, short CLAUDE.md</text><line x1="440" y1="78" x2="440" y2="110" class="ln" marker-end="url(#ah)"/><rect x="640" y="20" width="220" height="58" class="box"/><text x="652" y="44" class="t-b">Warm cache</text><text x="652" y="64" class="t-s">no long pauses, 1 h cache</text><line x1="750" y1="78" x2="548.5" y2="110" class="ln" marker-end="url(#ah)"/><rect x="20" y="250" width="220" height="58" class="box"/><text x="32" y="274" class="t-b">Cheaper model</text><text x="32" y="294" class="t-s">Sonnet or Haiku for routine</text><line x1="130" y1="250" x2="331.5" y2="202" class="ln" marker-end="url(#ah)"/><rect x="330" y="250" width="220" height="58" class="box"/><text x="342" y="274" class="t-b">Short outputs</text><text x="342" y="294" class="t-s">lower effort, concise</text><line x1="440" y1="250" x2="440" y2="202" class="ln" marker-end="url(#ah)"/><rect x="640" y="250" width="220" height="58" class="box"/><text x="652" y="274" class="t-b">Subagents</text><text x="652" y="294" class="t-s">big reads kept out</text><line x1="750" y1="250" x2="548.5" y2="202" class="ln" marker-end="url(#ah)"/></svg>
+    <figcaption>FIG 11 · Every idea above lands in one term of the formula. Fewer calls and smaller context shrink what is re-read; a warm cache keeps re-reads at the read price; the model sets all four prices; short outputs cut the 5× tokens; subagents keep big side jobs out of the lead. The <a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy</a> turns these into a monthly plan.</figcaption>
+  </figure>
+  <div class="widget" id="calc">
+    <span class="label">Try it: price a session before you run it</span>
+    <div class="controls">
+      <label>Model<select id="c-model"><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option><option value="claude-fable-5-1">Fable 5.1</option></select></label>
+      <label>Calls <span id="v-calls"></span><input type="range" id="c-calls" min="3" max="300" value="60"></label>
+      <label>Context at the end (K) <span id="v-end"></span><input type="range" id="c-end" min="25" max="900" step="5" value="150"></label>
+      <label>Output per call <span id="v-out"></span><input type="range" id="c-out" min="50" max="3000" step="50" value="400"></label>
+      <label>Breaks past the cache <span id="v-brk"></span><input type="range" id="c-brk" min="0" max="10" value="0"></label>
+      <label>Cache lifetime<select id="c-ttl"><option value="1h">1 hour</option><option value="5m">5 minutes</option></select></label>
+    </div>
+    <div class="readout"><div><span class="label">Session</span><b id="o-total"></b></div><div><span class="label">Cache reads</span><b id="o-read"></b></div><div><span class="label">Writes</span><b id="o-write"></b></div><div><span class="label">Rebuilds</span><b id="o-rebuild"></b></div><div><span class="label">Output</span><b id="o-out"></b></div></div>
+    <p class="label">Starts at the measured 20,225-token startup context and grows evenly. Same model as <code>tke estimate</code>.</p>
+  </div>
+</section>
+
+<section id="confusions">
+  <div class="beat"><span>Common confusions</span></div>
+  <h2>Seven things that sound right and aren't</h2>
+  <div class="confusions">
+    <div><span class="myth">"The model remembers our conversation."</span><span>It remembers nothing. The harness keeps the conversation and re-sends all of it on every call; that repeat is most of the bill.</span></div>
+    <div><span class="myth">"The prompt cache is on my laptop."</span><span>It is on the provider's servers, per organisation, and lasts minutes. What's on your laptop are transcripts and settings.</span></div>
+    <div><span class="myth">"A token is a word."</span><span>English averages 1.47 tokens per word here, and code packs fewer characters into each token than prose.</span></div>
+    <div><span class="myth">"A long CLAUDE.md costs a fortune on every call."</span><span>Cached, it is cheap per call. The real costs are weaker adherence and the full re-write after every rebuild or edit.</span></div>
+    <div><span class="myth">"Switching to a cheaper model halfway saves money."</span><span>The new model has a cold cache, so the whole history is written again at its write price. Choose the model when you start.</span></div>
+    <div><span class="myth">"Subagents always save tokens."</span><span>On the toy, the subagent version cost 9% more. They pay off for big side jobs on cheaper models.</span></div>
+    <div><span class="myth">"Output is a small part of the bill."</span><span>Output is 5× the input price, and thinking counts as output.</span></div>
+  </div>
+</section>
+
+<section id="do">
+  <div class="beat"><span>Do it</span></div>
+  <h2>Three questions to check yourself</h2>
+  <ol class="do">
+    <li><p>The toy's CLAUDE.md was 13 lines and 355 tokens, about 27 tokens a line. Roughly what does a 400-line CLAUDE.md cost over a 200-call Opus 5.5 session with a 1-hour cache?</p>
+      <details><summary>Show the answer</summary><div><p>About 10,900 tokens. Written once: $0.087. Read 200 times: $0.44. Total about $0.52. Cheap per session, but it is attention spent on every call, and it is written again after every rebuild.</p></div></details></li>
+    <li><p>Your Sonnet 5.5 session holds 150,000 tokens and the cache lasts 5 minutes. You take a 20-minute break. What does the next call cost to send its context, compared with sending it warm?</p>
+      <details><summary>Show the answer</summary><div><p>Cold: 150,000 × $2.50 per million = $0.375. Warm: 150,000 × $0.10 per million = $0.015. The break makes that one call 25× more expensive to send.</p></div></details></li>
+    <li><p>Why did the subagent not save money on the toy, and what kind of job would change that?</p>
+      <details><summary>Show the answer</summary><div><p>The job was two small files. The lead still paid to write the brief and read the report, and its own context hardly grew. A subagent pays when its job would otherwise put a lot of text in the lead's context (wide searches, long logs), and when it can run on a cheaper model.</p></div></details></li>
+  </ol>
+</section>
+
+<section id="say">
+  <div class="beat"><span>Say it</span></div>
+  <h2>The two-minute explanation</h2>
+  <div class="say">
+    <div>
+      <span class="label">To a colleague</span>
+      <p class="script">"A coding agent is a model in a loop. The model remembers nothing, so on every turn the tool re-sends the whole conversation: its own instructions, our CLAUDE.md, every file it has read. We pay per token: cheap for text the cache has seen in the last few minutes, more for new text, five times more for what the model writes. So the bill grows with how big the context gets and how many turns we take. Short sessions, short CLAUDE.md, no long pauses, the cheapest model that does the job, and subagents for big side searches keep it down."</p>
+    </div>
+    <div>
+      <span class="label">The one line</span>
+      <span class="one">Every call re&#8209;sends everything.</span>
+    </div>
+  </div>
+</section>
+
+<section id="sources">
+  <div class="beat"><span>Sources</span></div>
+  <h2>Where the facts come from</h2>
+  <ul class="sources">
+    <li>Measurements: <code>docs/basics/measure.py</code> in this repo, run with Claude Code 2.1.304 on 2026-10-20; raw numbers in <code>docs/basics/measured.json</code>. Costs priced with <code>token_economy/prices.py</code> (list prices as of 2026-10-13).</li>
+    <li>Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Prompt caching</a>: prefix order, 5-minute and 1-hour lifetimes, write and read multipliers, minimum lengths, isolation by organisation. Checked 2026-10-20.</li>
+    <li>Anthropic, <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a>: per-model rates and the Haiku 5.5 100K step.</li>
+    <li>Claude Code docs: <a href="https://code.claude.com/docs/en/memory">How Claude remembers your project</a> (CLAUDE.md locations, load order, 200-line advice, imports, comments, AGENTS.md, auto memory), <a href="https://code.claude.com/docs/en/sub-agents">Subagents</a> (fresh context, what loads, model order, built-in agents), <a href="https://code.claude.com/docs/en/prompt-caching">Prompt caching in Claude Code</a> (TTL by billing mode, <code>promptCacheTtl</code>). Checked 2026-10-20.</li>
+    <li>OpenAI, <a href="https://learn.chatgpt.com/docs/agent-configuration/subagents">Codex subagents</a> and GitHub, <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli">Copilot CLI custom agents</a>: the same loop and subagent ideas in the other harnesses.</li>
+    <li>Logos: <a href="https://simpleicons.org">simple-icons</a> 16.35.0 (CC0), used only to name the products.</li>
+  </ul>
+  <div class="next"><span>Next: <a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy →</a></span><span>Then measure your own: <code>tke why week</code></span></div>
+</section>
+
+</main>
+<script>
+"use strict";
+const PRICES = {"claude-opus-5-5": {"inp": 4, "out": 20, "read": 0.2, "w5": 5, "w1h": 8}, "claude-sonnet-5-5": {"inp": 2, "out": 10, "read": 0.1, "w5": 2.5, "w1h": 4}, "claude-haiku-5-5": {"inp": 0.1, "out": 0.5, "read": 0.01, "w5": 0.125, "w1h": 0.2}, "claude-fable-5-1": {"inp": 10, "out": 50, "read": 0.25, "w5": 12.5, "w1h": 20}}, START = 20225;
+function priceSession(model, calls, end, out, breaks, ttl) {
+  const p0 = PRICES[model], n = Math.max(1, calls), miss = new Set();
+  for (let j = 1; j <= breaks; j++) miss.add(Math.min(n - 1, Math.round(j * n / (breaks + 1))));
+  const parts = {read: 0, write: 0, rebuild: 0, out: 0}; let prev = 0;
+  for (let i = 0; i < n; i++) {
+    const ctx = n === 1 ? START : START + (end - START) * i / (n - 1);
+    const p = (model === "claude-haiku-5-5" && ctx > 100000) ? {inp: p0.inp * 5, out: p0.out * 5, read: p0.read * 5, w5: p0.w5 * 5, w1h: p0.w1h * 5} : p0;
+    const w = ttl === "1h" ? p.w1h : p.w5;
+    if (i > 0 && miss.has(i)) parts.rebuild += ctx * w / 1e6;
+    else { const neu = i === 0 ? ctx : ctx - prev; parts.read += (ctx - neu) * p.read / 1e6; parts.write += neu * w / 1e6; }
+    parts.out += out * p.out / 1e6; prev = ctx;
+  }
+  return parts;
+}
+function calc() {
+  const v = id => document.getElementById(id).value;
+  const calls = +v("c-calls"), end = Math.max(START, +v("c-end") * 1000), out = +v("c-out"), brk = +v("c-brk");
+  document.getElementById("v-calls").textContent = calls; document.getElementById("v-end").textContent = v("c-end");
+  document.getElementById("v-out").textContent = out; document.getElementById("v-brk").textContent = brk;
+  const p = priceSession(v("c-model"), calls, end, out, brk, v("c-ttl")), f = x => "$" + x.toFixed(2);
+  document.getElementById("o-total").textContent = f(p.read + p.write + p.rebuild + p.out);
+  document.getElementById("o-read").textContent = f(p.read); document.getElementById("o-write").textContent = f(p.write);
+  document.getElementById("o-rebuild").textContent = f(p.rebuild); document.getElementById("o-out").textContent = f(p.out);
+}
+document.querySelectorAll("#calc input, #calc select").forEach(e => e.addEventListener("input", calc));
+calc();
+</script>
+</body>
+</html>

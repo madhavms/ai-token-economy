@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Basics Under the Bill</title>
+<meta name="description" content="What a language model, a token, an API call, the prompt cache, an agent, CLAUDE.md and a subagent are, how each is priced, and how they glue together into the bill: the groundwork for the AI token economy. Every number measured with the real Claude Code CLI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Architects+Daughter&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+{{css}}
+/* additions for this page */
+:root{--viz-1:#2a78d6;--viz-2:#eb6834}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--viz-1:#3987e5;--viz-2:#d95926}}
+:root[data-theme="dark"]{--viz-1:#3987e5;--viz-2:#d95926}
+svg .zone{fill:none;stroke:var(--kg-line-2);stroke-width:1.2;stroke-dasharray:6 5}
+svg .logo{fill:var(--kg-ink)} svg .logo.claude{fill:#D97757}
+svg .ah-d{fill:var(--kg-muted)}
+svg .grid{stroke:var(--kg-line);stroke-width:1}
+svg .viz-line{fill:none;stroke-width:2.5;stroke-linejoin:round}
+svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--kg-mono);font-size:.74rem;color:var(--kg-muted);margin-top:8px}
+.key i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px}
+.trace tr.sum td{background:var(--kg-panel)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.two>div{border:1.5px solid var(--kg-ink);background:var(--kg-card);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.two h3{font-size:1rem}
+#calc .readout{grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr))}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips span{font-family:var(--kg-mono);font-size:.78rem;border:1px solid var(--kg-line-2);background:var(--kg-panel);padding:2px 8px}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    <marker id="ah-hi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-hi"/></marker>
+    <marker id="ah-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-d"/></marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--kg-card)"/><line x1="0" y1="0" x2="0" y2="8" class="hatch-line"/></pattern>
+    {{icons}}
+  </defs>
+</svg>
+
+<main class="page">
+
+<header class="hero">
+  <span class="label">AI Engineering · Before the token economy</span>
+  <h1>The Basics Under the Bill</h1>
+  <p class="lede">A coding agent's bill is not a mystery and not a flat fee. It is a handful of simple ideas multiplied together: a model that remembers nothing, text counted in tokens, a conversation sent again on every call, a cache that makes the repeat cheap, and instructions and helpers that ride along. This page builds those ideas one at a time, on one small task you can trace by hand, with every number measured.</p>
+  <div class="tblock">
+    <div><b>What it covers</b>Models, tokens, API calls, prices, the prompt cache, agents, CLAUDE.md, subagents, and where everything lives</div>
+    <div><b>Measured with</b>Claude Code {{claude_version}} on {{date}}, Sonnet 5.5 and Haiku 5.5; prices as of {{prices_date}}</div>
+    <div><b>Leads to</b><a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy</a> · <a href="https://github.com/madhavms/ai-token-economy">the tke tool</a></div>
+    <div><b>Time</b>About 25 minutes</div>
+  </div>
+</header>
+
+<section id="big-picture">
+  <div class="beat"><span>The big picture</span></div>
+  <h2>One picture, then the parts</h2>
+  <p>Every diagram on this page uses the same marks, so learn them once:</p>
+  <figure class="fig">
+    {{fig:dna}}
+    <figcaption>FIG 0 · The diagram language. Hatched = fixed text loaded before you type. Blue outline = text already in the conversation, carried from call to call. Orange = new on this call. Plain box = a program. Solid line = happens on every call. Dashed line = happens once.</figcaption>
+  </figure>
+  <figure class="fig">
+    {{fig:big}}
+    <figcaption>FIG 1 · You type once. The <b>harness</b> (the program you run: Claude Code, Codex or Copilot CLI) builds the whole context and sends it to the model on every call. The model replies or asks for a tool. The harness runs the tool in your repo, adds the result, and calls again. Each call is billed by what it reads, what is new, and what it writes back.</figcaption>
+  </figure>
+  <h3>The 60-second answer</h3>
+  <ul>
+    <li><b>The model remembers nothing.</b> To take one more step, the harness re-sends everything: instructions, tools, CLAUDE.md, every file read and every command output so far.</li>
+    <li><b>You pay per token, per call.</b> A token is a piece of a word (English averages {{en_cpt}} characters a token, code {{code_cpt}}). Output costs 5× input.</li>
+    <li><b>The cache makes repeats cheap.</b> Text sent seconds ago is read back at {{read_mult}}× the input price on Sonnet 5.5. After a pause longer than the cache's lifetime it is written again at full price.</li>
+    <li><b>Before you type, the context is already {{startup_min_k}} tokens</b> (Claude Code's own instructions and tools), and {{startup_full_k}} with plugins and skills installed. CLAUDE.md rides on top of that, on every call.</li>
+    <li><b>A subagent is a fresh, small context</b> that does a side job and returns a short report, so the lead's context doesn't grow. It saves money only when that side job is big.</li>
+  </ul>
+</section>
+
+<section id="model">
+  <div class="beat"><span>1 · The model</span></div>
+  <h2>A function that predicts the next token</h2>
+  <p>A <b>large language model</b> (LLM) is a very large function. You give it text; it returns its best guess at the next small piece of text. To write a sentence it runs again and again, each time with the text so far plus the piece it just added. That repeat-until-done is called <b>generation</b>.</p>
+  <p>Two facts about it set the whole bill:</p>
+  <ul>
+    <li><b>It is stateless.</b> Between calls it keeps nothing: no memory of you, your repo or the last answer. Whatever it should know has to be in the text you send this time.</li>
+    <li><b>Reading is cheaper than writing.</b> The text you send is processed in one parallel pass. Each token it writes back needs its own pass. That is why output is priced at 5× input.</li>
+  </ul>
+  <div class="callout"><span class="label">The toy for the whole page</span>
+    <p>A tiny repo: <code>shop/cart.py</code> has a bug (the cart total ignores quantity), <code>tests/test_cart.py</code> catches it, and a 13-line <code>CLAUDE.md</code> says how to run the tests. We ask Claude Code: <i>"The test fails. Find out why and fix it."</i> It is in this repo under <code>docs/basics/toy/</code>; <code>docs/basics/measure.py</code> runs it.</p>
+  </div>
+</section>
+
+<section id="tokens">
+  <div class="beat"><span>2 · Tokens</span></div>
+  <h2>Text is counted in tokens</h2>
+  <p>The model doesn't see letters or words. A <b>tokenizer</b> cuts text into <b>tokens</b>: common words are one token, rare words and code split into several pieces. Every limit and every price is in tokens.</p>
+  <figure class="fig">
+    {{fig:tokens}}
+    <figcaption>FIG 2 · Measured by sending the same prompt with and without a block of text and reading the difference in the API's token count. English: {{en_chars}} characters ({{en_words}} words) = {{en_tokens}} tokens, so about {{en_cpt}} characters or {{en_tpw}} tokens per word. Python: {{code_chars}} characters = {{code_tokens}} tokens, {{code_cpt}} characters each. Code costs more per character than prose.</figcaption>
+  </figure>
+  <p>Rule of thumb from these numbers: a page of English prose (about 3,000 characters) is roughly 800 tokens; the same length of code is closer to 1,200.</p>
+</section>
+
+<section id="call">
+  <div class="beat"><span>3 · One call</span></div>
+  <h2>Every call sends everything again</h2>
+  <p>An <b>API call</b> is one request to the model. It carries three things, in this order: the <b>tool definitions</b> (what the model may ask to run), the <b>system prompt</b> (standing instructions), and the <b>messages</b> (the conversation so far, including every tool result). The reply comes back with four counts, and these four numbers are the whole bill:</p>
+  <div class="chips"><span>input_tokens</span><span>cache_read_input_tokens</span><span>cache_creation_input_tokens</span><span>output_tokens</span></div>
+  <p>Because the model is stateless, the second call contains the first call's text, plus the reply, plus the tool result. The toy task took {{toy_calls}} calls:</p>
+  <figure class="fig">
+    {{fig:calls}}
+    <figcaption>FIG 3 · The toy task, measured. Each call re-sends the startup context (hatched) and everything since (blue); only the orange slice is new. The peak was {{toy_peak}} tokens. Across the three calls {{toy_in_tokens}} input tokens were sent and {{toy_read_pct}} of them came from the cache.</figcaption>
+  </figure>
+  <p>The <b>context window</b> is the most a single call can hold. When a long session approaches it, the harness <b>compacts</b>: it replaces the history with a written summary, and the next call starts from that smaller context.</p>
+</section>
+
+<section id="price">
+  <div class="beat"><span>4 · The price list</span></div>
+  <h2>Four prices per model</h2>
+  <p>Each token in a call is charged one of four rates. <b>Input</b>: sent and not cached. <b>Cache write</b>: sent and stored for reuse (at 1.25× input for a 5-minute lifetime, 2× for 1 hour). <b>Cache read</b>: re-sent and found in the cache. <b>Output</b>: written by the model, thinking included.</p>
+  <div class="trace"><table>
+    <thead><tr><th>$ per million tokens</th><th>Input</th><th>Cache write 5 min</th><th>Cache write 1 h</th><th>Cache read</th><th>Output</th></tr></thead>
+    <tbody>{{price_table}}</tbody>
+  </table></div>
+  <ul>
+    <li><b>Output is 5× input</b> on every model above. Long answers and long thinking are the expensive kind of token.</li>
+    <li><b>A cache read is 0.05× input</b> on Opus 5.5 and Sonnet 5.5, 0.1× on Haiku 5.5 and 0.025× on Fable 5.1. Reading 100,000 cached tokens on Sonnet costs $0.01; writing them costs $0.25 to $0.40.</li>
+    <li><b>Haiku 5.5 has a size step.</b> Once a single request passes 100,000 tokens, every Haiku rate is 5× (input ${{haiku_long_inp}} instead of ${{haiku_inp}}).</li>
+    <li><b>Codex</b> is billed in credits with a cheaper rate for cached input and no separate charge for writing the cache. The ideas on this page carry over; the numbers differ.</li>
+    <li><b>On a subscription</b> you don't see per-token bills, but usage is counted in the same tokens; tools like <code>tke</code> price them at these list rates so sessions can be compared.</li>
+  </ul>
+</section>
+
+<section id="cache">
+  <div class="beat"><span>5 · The prompt cache</span></div>
+  <h2>The repeat is cheap, if it is recent and identical</h2>
+  <p>Since every call re-sends the same beginning, Anthropic keeps recently processed prompts in a <b>prompt cache</b> on its servers. On the next call, the longest <b>identical prefix</b> (the same text from the very first character) is read from the cache at the read price. Everything after the first difference is processed and written again.</p>
+  <figure class="fig">
+    {{fig:cache}}
+    <figcaption>FIG 4 · Each call reads what is cached and writes what is new. A pause longer than the cache's lifetime empties it, so the next call writes the whole prompt again: a <b>cache rebuild</b>. Changing anything near the top (the tool list, CLAUDE.md, or the model) has the same effect, because the prefix no longer matches.</figcaption>
+  </figure>
+  <ul>
+    <li><b>Measured:</b> the very first call of a fresh session read {{hello1_read}} tokens from the cache and wrote {{hello1_write}}. Claude Code's system prompt had been cached by earlier sessions on the same account. Run again straight away, the same call read {{hello2_read}} and wrote nothing.</li>
+    <li><b>Lifetime:</b> 5 minutes by default, refreshed every time the entry is used; 1 hour costs more to write. Claude Code on a subscription uses 1 hour for the main conversation and 5 minutes for subagents; with an API key or usage credits, 5 minutes unless you set <code>promptCacheTtl</code>.</li>
+    <li><b>Scope:</b> caches are shared within your organisation (and workspace), never across organisations, and only for prompts of at least 512 tokens on current models.</li>
+    <li><b>Switching models</b> mid-session misses the cache: each model has its own.</li>
+  </ul>
+</section>
+
+<section id="agent">
+  <div class="beat"><span>6 · The agent</span></div>
+  <h2>A model, some tools, and a loop</h2>
+  <p>An <b>agent</b> is a model that can act. The harness gives it <b>tools</b> (read a file, edit a file, run a shell command, search) and runs a simple <b>loop</b>: call the model; if it asks for a tool, run it, append the result, call again; if it just replies, stop.</p>
+  <figure class="fig">
+    {{fig:loop}}
+    <figcaption>FIG 5 · The agent loop. Every turn round the loop is one API call, and every call re-sends the whole conversation. In the toy, call 1 asked for two reads at once (the code and the test), call 2 made the edit and ran the tests together, and call 3 replied. Claude Code, Codex and Copilot CLI all run this same loop with different tools and prompts.</figcaption>
+  </figure>
+  <p>That is why agents cost far more than chat: a task that takes 60 turns re-sends its growing context 60 times.</p>
+</section>
+
+<section id="context">
+  <div class="beat"><span>7 · What fills the context</span></div>
+  <h2>Startup context, CLAUDE.md and the rest</h2>
+  <p>Before the agent reads a single file, the first call already carries the harness's system prompt and the definitions of every tool, plus anything you've installed that adds to them.</p>
+  <figure class="fig">
+    {{fig:anatomy}}
+    <figcaption>FIG 6 · Measured in an empty folder with the prompt "Reply with the single word OK". Claude Code's minimal setup: {{startup_min}} tokens. Adding the toy's 13-line CLAUDE.md: +{{md_tokens}} tokens (its text plus the wrapper Claude Code puts round it). The author's everyday setup with plugins, skills and MCP servers: {{startup_full}} tokens, {{setup_extra}} more, on every call of every session.</figcaption>
+  </figure>
+  <h3>CLAUDE.md: standing instructions you write</h3>
+  <p><b>CLAUDE.md</b> is a plain Markdown file of instructions (how to run the tests, the rules of the codebase). Claude Code reads it at the start of every session and puts it in the context, so it rides along on every call, read from the cache.</p>
+  <figure class="fig">
+    {{fig:claudemd}}
+    <figcaption>FIG 7 · Which files load. Files in your folder and every folder above it load at launch and are joined together, the closest to where you started read last. A sub-folder's CLAUDE.md loads only when Claude works in that folder. If a repo has AGENTS.md (the file Codex reads) and no CLAUDE.md, Claude Code reads AGENTS.md instead.</figcaption>
+  </figure>
+  <ul>
+    <li><b>Keep it under about 200 lines.</b> Anthropic's advice: longer files take more context and are followed less reliably. Move rules that apply to one part of the code into <code>.claude/rules/</code> with a path, so they load only there.</li>
+    <li><b>Imports don't save anything.</b> <code>@path/to/file</code> pulls a file in at launch, so it costs the same as pasting it.</li>
+    <li><b>HTML comments are free.</b> <code>&lt;!-- notes for humans --&gt;</code> are stripped before the file reaches the model.</li>
+    <li><b>The per-call cost is small, the attention cost isn't.</b> Read from the cache, the toy's {{md_tokens}}-token CLAUDE.md costs {{md_per_1k_calls}} per thousand Opus calls. The real reasons to keep it short are adherence and the full re-write after every cache rebuild.</li>
+  </ul>
+  <p>After startup, the context fills with the work itself: your messages, the model's replies and tool calls, and above all <b>tool results</b>: the files it read and the command output it saw. A single unfiltered test log or a whole large file can outweigh everything else, and it is then re-read on every later call.</p>
+</section>
+
+<section id="trace">
+  <div class="beat"><span>8 · One task, priced</span></div>
+  <h2>The toy, call by call</h2>
+  <p>Here is the toy task's real bill on Sonnet 5.5, from the transcript Claude Code saved. Each row is one API call; the last three columns are what each kind of token cost.</p>
+  <div class="trace"><table>
+    <thead><tr><th>Call</th><th>Tools it asked for</th><th>Sent</th><th>From cache</th><th>New</th><th>Output</th><th>Read $</th><th>Write $</th><th>Output $</th></tr></thead>
+    <tbody>{{toy_table}}</tbody>
+  </table></div>
+  <p>Total <b>{{toy_cost}}</b> (Claude Code reported {{toy_reported}} for the same run). The tests passed. Of that, <b>{{toy_startup_pct}}</b> was the startup context: on a task this small, Claude Code's own instructions cost more than the work. The same tokens would cost <b>{{toy_opus}}</b> on Opus 5.5 and <b>{{toy_haiku}}</b> on Haiku 5.5.</p>
+  <div class="callout"><span class="label">The formula, now with every part named</span>
+    <p>cost of a call = tokens read from cache × read price + new tokens × write price + output tokens × output price. A session is that, summed over every call. Everything else on this page is about making one of those terms smaller.</p>
+  </div>
+</section>
+
+<section id="scale">
+  <div class="beat"><span>9 · When the session grows</span></div>
+  <h2>Long sessions pay for their history on every call</h2>
+  <p>Real tasks run for dozens of calls and the context keeps growing, so each call re-reads more. Modelled with <code>tke estimate</code> from the toy's measured start of {{startup_min}} tokens, on Sonnet 5.5 with a 1-hour cache and 400 output tokens a call:</p>
+  <figure class="fig">
+    {{fig:scale}}
+    <figcaption>FIG 8 · Context size per call. Blue: one session of 60 calls growing to 150,000 tokens, {{long_cost}} ({{long_read}} reads, {{long_write}} writes, {{long_out}} output). Orange: the same work as three fresh sessions of 20 calls, each starting clean, {{three_cost}}, {{long_saving}} less. On Opus 5.5 the long session is {{opus_long}}. With a 5-minute cache and three breaks it is {{brk_cost}}, {{brk_rebuild}} of it rebuilds.</figcaption>
+  </figure>
+  <p>That is why <code>/clear</code> between tasks and a short handoff note beat one endless session, and why the cache lifetime matters most in long sessions.</p>
+</section>
+
+<section id="subagents">
+  <div class="beat"><span>10 · Subagents</span></div>
+  <h2>A fresh, small context for a side job</h2>
+  <p>A <b>subagent</b> is a second agent the lead starts for one job. It gets a <b>fresh context</b>: its own short system prompt (not Claude Code's), your CLAUDE.md files, and a <b>brief</b> the lead writes. It can run on a different model. When it finishes, only its <b>report</b> comes back into the lead's context; the files it read and the output it saw stay with it.</p>
+  <figure class="fig">
+    {{fig:sub}}
+    <figcaption>FIG 9 · The toy again, with a <code>scoper</code> subagent on Haiku 5.5 asked to find the cause first. The subagent's first call was {{sub_first}} tokens against the lead's {{sub_lead_first}}; it took {{sub_calls}} calls and cost {{sub_sub}}. Its report entered the lead's context as about {{sub_report}} tokens.</figcaption>
+  </figure>
+  <ul>
+    <li><b>On this tiny task it didn't save:</b> {{sub_cost}} in total against {{toy_cost}} without it ({{sub_vs}} more), because the lead still paid for writing the brief and reading the report, and the job was only two small files.</li>
+    <li><b>It saves when the side job is big:</b> a search through many files or a long log, done on a cheaper model, while the lead's context stays small for every later call.</li>
+    <li><b>The model is set per subagent.</b> A <code>model:</code> line in its file wins; otherwise it uses the lead's model (or <code>CLAUDE_CODE_SUBAGENT_MODEL</code>). The built-in Explore agent runs on the main conversation's model, so a search on an Opus session is billed at Opus rates.</li>
+  </ul>
+</section>
+
+<section id="where">
+  <div class="beat"><span>11 · What lives where</span></div>
+  <h2>Your machine, and theirs</h2>
+  <figure class="fig">
+    {{fig:where}}
+    <figcaption>FIG 10 · Everything you write and every transcript stays on your machine; the model and the prompt cache are at the provider. The "cache" is not a file on your laptop. The local transcripts are what <code>tke</code> reads to price every call after the fact.</figcaption>
+  </figure>
+</section>
+
+<section id="glue">
+  <div class="beat"><span>12 · How it glues together</span></div>
+  <h2>One formula, six levers</h2>
+  <figure class="fig">
+    {{fig:glue}}
+    <figcaption>FIG 11 · Every idea above lands in one term of the formula. Fewer calls and smaller context shrink what is re-read; a warm cache keeps re-reads at the read price; the model sets all four prices; short outputs cut the 5× tokens; subagents keep big side jobs out of the lead. The <a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy</a> turns these into a monthly plan.</figcaption>
+  </figure>
+  <div class="widget" id="calc">
+    <span class="label">Try it: price a session before you run it</span>
+    <div class="controls">
+      <label>Model<select id="c-model"><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option><option value="claude-fable-5-1">Fable 5.1</option></select></label>
+      <label>Calls <span id="v-calls"></span><input type="range" id="c-calls" min="3" max="300" value="60"></label>
+      <label>Context at the end (K) <span id="v-end"></span><input type="range" id="c-end" min="25" max="900" step="5" value="150"></label>
+      <label>Output per call <span id="v-out"></span><input type="range" id="c-out" min="50" max="3000" step="50" value="400"></label>
+      <label>Breaks past the cache <span id="v-brk"></span><input type="range" id="c-brk" min="0" max="10" value="0"></label>
+      <label>Cache lifetime<select id="c-ttl"><option value="1h">1 hour</option><option value="5m">5 minutes</option></select></label>
+    </div>
+    <div class="readout"><div><span class="label">Session</span><b id="o-total"></b></div><div><span class="label">Cache reads</span><b id="o-read"></b></div><div><span class="label">Writes</span><b id="o-write"></b></div><div><span class="label">Rebuilds</span><b id="o-rebuild"></b></div><div><span class="label">Output</span><b id="o-out"></b></div></div>
+    <p class="label">Starts at the measured {{startup_min}}-token startup context and grows evenly. Same model as <code>tke estimate</code>.</p>
+  </div>
+</section>
+
+<section id="confusions">
+  <div class="beat"><span>Common confusions</span></div>
+  <h2>Seven things that sound right and aren't</h2>
+  <div class="confusions">
+    <div><span class="myth">"The model remembers our conversation."</span><span>It remembers nothing. The harness keeps the conversation and re-sends all of it on every call; that repeat is most of the bill.</span></div>
+    <div><span class="myth">"The prompt cache is on my laptop."</span><span>It is on the provider's servers, per organisation, and lasts minutes. What's on your laptop are transcripts and settings.</span></div>
+    <div><span class="myth">"A token is a word."</span><span>English averages {{en_tpw}} tokens per word here, and code packs fewer characters into each token than prose.</span></div>
+    <div><span class="myth">"A long CLAUDE.md costs a fortune on every call."</span><span>Cached, it is cheap per call. The real costs are weaker adherence and the full re-write after every rebuild or edit.</span></div>
+    <div><span class="myth">"Switching to a cheaper model halfway saves money."</span><span>The new model has a cold cache, so the whole history is written again at its write price. Choose the model when you start.</span></div>
+    <div><span class="myth">"Subagents always save tokens."</span><span>On the toy, the subagent version cost {{sub_vs}} more. They pay off for big side jobs on cheaper models.</span></div>
+    <div><span class="myth">"Output is a small part of the bill."</span><span>Output is 5× the input price, and thinking counts as output.</span></div>
+  </div>
+</section>
+
+<section id="do">
+  <div class="beat"><span>Do it</span></div>
+  <h2>Three questions to check yourself</h2>
+  <ol class="do">
+    <li><p>The toy's CLAUDE.md was {{md_lines}} lines and {{md_tokens}} tokens, about {{tok_per_line}} tokens a line. Roughly what does a 400-line CLAUDE.md cost over a 200-call Opus 5.5 session with a 1-hour cache?</p>
+      <details><summary>Show the answer</summary><div><p>About {{big_md}} tokens. Written once: {{big_md_write}}. Read 200 times: {{big_md_reads}}. Total about {{big_md_total}}. Cheap per session, but it is attention spent on every call, and it is written again after every rebuild.</p></div></details></li>
+    <li><p>Your Sonnet 5.5 session holds 150,000 tokens and the cache lasts 5 minutes. You take a 20-minute break. What does the next call cost to send its context, compared with sending it warm?</p>
+      <details><summary>Show the answer</summary><div><p>Cold: 150,000 × $2.50 per million = {{pause_rebuild}}. Warm: 150,000 × $0.10 per million = {{pause_read}}. The break makes that one call {{pause_x}}× more expensive to send.</p></div></details></li>
+    <li><p>Why did the subagent not save money on the toy, and what kind of job would change that?</p>
+      <details><summary>Show the answer</summary><div><p>The job was two small files. The lead still paid to write the brief and read the report, and its own context hardly grew. A subagent pays when its job would otherwise put a lot of text in the lead's context (wide searches, long logs), and when it can run on a cheaper model.</p></div></details></li>
+  </ol>
+</section>
+
+<section id="say">
+  <div class="beat"><span>Say it</span></div>
+  <h2>The two-minute explanation</h2>
+  <div class="say">
+    <div>
+      <span class="label">To a colleague</span>
+      <p class="script">"A coding agent is a model in a loop. The model remembers nothing, so on every turn the tool re-sends the whole conversation: its own instructions, our CLAUDE.md, every file it has read. We pay per token: cheap for text the cache has seen in the last few minutes, more for new text, five times more for what the model writes. So the bill grows with how big the context gets and how many turns we take. Short sessions, short CLAUDE.md, no long pauses, the cheapest model that does the job, and subagents for big side searches keep it down."</p>
+    </div>
+    <div>
+      <span class="label">The one line</span>
+      <span class="one">Every call re&#8209;sends everything.</span>
+    </div>
+  </div>
+</section>
+
+<section id="sources">
+  <div class="beat"><span>Sources</span></div>
+  <h2>Where the facts come from</h2>
+  <ul class="sources">
+    <li>Measurements: <code>docs/basics/measure.py</code> in this repo, run with Claude Code {{claude_version}} on {{date}}; raw numbers in <code>docs/basics/measured.json</code>. Costs priced with <code>token_economy/prices.py</code> (list prices as of {{prices_date}}).</li>
+    <li>Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Prompt caching</a>: prefix order, 5-minute and 1-hour lifetimes, write and read multipliers, minimum lengths, isolation by organisation. Checked {{date}}.</li>
+    <li>Anthropic, <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a>: per-model rates and the Haiku 5.5 100K step.</li>
+    <li>Claude Code docs: <a href="https://code.claude.com/docs/en/memory">How Claude remembers your project</a> (CLAUDE.md locations, load order, 200-line advice, imports, comments, AGENTS.md, auto memory), <a href="https://code.claude.com/docs/en/sub-agents">Subagents</a> (fresh context, what loads, model order, built-in agents), <a href="https://code.claude.com/docs/en/prompt-caching">Prompt caching in Claude Code</a> (TTL by billing mode, <code>promptCacheTtl</code>). Checked {{date}}.</li>
+    <li>OpenAI, <a href="https://learn.chatgpt.com/docs/agent-configuration/subagents">Codex subagents</a> and GitHub, <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli">Copilot CLI custom agents</a>: the same loop and subagent ideas in the other harnesses.</li>
+    <li>Logos: <a href="https://simpleicons.org">simple-icons</a> 16.35.0 (CC0), used only to name the products.</li>
+  </ul>
+  <div class="next"><span>Next: <a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy →</a></span><span>Then measure your own: <code>tke why week</code></span></div>
+</section>
+
+</main>
+<script>
+"use strict";
+const PRICES = {{prices_json}}, START = {{start_tokens}};
+function priceSession(model, calls, end, out, breaks, ttl) {
+  const p0 = PRICES[model], n = Math.max(1, calls), miss = new Set();
+  for (let j = 1; j <= breaks; j++) miss.add(Math.min(n - 1, Math.round(j * n / (breaks + 1))));
+  const parts = {read: 0, write: 0, rebuild: 0, out: 0}; let prev = 0;
+  for (let i = 0; i < n; i++) {
+    const ctx = n === 1 ? START : START + (end - START) * i / (n - 1);
+    const p = (model === "claude-haiku-5-5" && ctx > 100000) ? {inp: p0.inp * 5, out: p0.out * 5, read: p0.read * 5, w5: p0.w5 * 5, w1h: p0.w1h * 5} : p0;
+    const w = ttl === "1h" ? p.w1h : p.w5;
+    if (i > 0 && miss.has(i)) parts.rebuild += ctx * w / 1e6;
+    else { const neu = i === 0 ? ctx : ctx - prev; parts.read += (ctx - neu) * p.read / 1e6; parts.write += neu * w / 1e6; }
+    parts.out += out * p.out / 1e6; prev = ctx;
+  }
+  return parts;
+}
+function calc() {
+  const v = id => document.getElementById(id).value;
+  const calls = +v("c-calls"), end = Math.max(START, +v("c-end") * 1000), out = +v("c-out"), brk = +v("c-brk");
+  document.getElementById("v-calls").textContent = calls; document.getElementById("v-end").textContent = v("c-end");
+  document.getElementById("v-out").textContent = out; document.getElementById("v-brk").textContent = brk;
+  const p = priceSession(v("c-model"), calls, end, out, brk, v("c-ttl")), f = x => "$" + x.toFixed(2);
+  document.getElementById("o-total").textContent = f(p.read + p.write + p.rebuild + p.out);
+  document.getElementById("o-read").textContent = f(p.read); document.getElementById("o-write").textContent = f(p.write);
+  document.getElementById("o-rebuild").textContent = f(p.rebuild); document.getElementById("o-out").textContent = f(p.out);
+}
+document.querySelectorAll("#calc input, #calc select").forEach(e => e.addEventListener("input", calc));
+calc();
+</script>
+</body>
+</html>
