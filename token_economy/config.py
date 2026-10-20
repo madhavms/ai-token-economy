@@ -10,6 +10,8 @@ DEFAULTS = {
     "workdays": 22,                  # workdays per month for pacing
     "reserve_pct": 15,               # held back for the last week
     "big_context": 150000,           # a call with a prompt above this is "fat"
+    "codex_speed": "auto",           # standard | fast | ultrafast | auto (read service_tier from ~/.codex/config.toml)
+    "codex_billing": "credits",      # credits (purchased / pay-as-you-go) | plan (included subscription usage)
 }
 
 
@@ -27,6 +29,26 @@ def claude_home():
 
 def codex_home():
     return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+
+
+def codex_speed(cfg=None):
+    """(speed, multiplier, where it came from). Codex logs don't record speed per turn, so this is a setting."""
+    from . import prices
+    cfg = cfg or load()
+    speed, src = str(cfg.get("codex_speed", "auto")).lower(), "tke config"
+    if speed == "auto":
+        speed, src = "standard", "default"
+        try:
+            import re
+            text = (codex_home() / "config.toml").read_text(encoding="utf-8")
+            head = text.split("\n[", 1)[0]
+            m = re.search(r'(?m)^\s*service_tier\s*=\s*"([^"]+)"', head)
+            if m:
+                speed, src = m.group(1).lower(), "service_tier in ~/.codex/config.toml"
+        except OSError:
+            pass
+    table = prices.CODEX_SPEED.get(cfg.get("codex_billing", "credits"), prices.CODEX_SPEED["credits"])
+    return speed, table.get(speed, 1.0), src
 
 
 def load():

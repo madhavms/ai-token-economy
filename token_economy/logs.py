@@ -19,13 +19,16 @@ ONE_HOUR = timedelta(hours=1)
 
 class Call:
     __slots__ = ("tool", "session", "project", "ts", "model", "prompt", "read", "w5", "w1h",
-                 "uncached", "out", "cost", "subagent", "rebuild", "rebuild_waste")
+                 "uncached", "out", "cost", "subagent", "rebuild", "rebuild_waste", "speed", "geo", "searches",
+                 "fast_extra")
 
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
         self.rebuild = bool(self.rebuild)
         self.rebuild_waste = self.rebuild_waste or 0.0
+        self.searches = self.searches or 0
+        self.fast_extra = self.fast_extra or 0.0
 
 
 def parse_ts(s):
@@ -88,11 +91,15 @@ def claude_file_calls(path, since=None, project=None, subagent=None):
         ts = parse_ts(d.get("timestamp"))
         if ts is None or (since and ts < since):
             continue
+        speed, geo = u.get("speed"), u.get("inference_geo")
+        searches = ((u.get("server_tool_use") or {}).get("web_search_requests") or 0)
+        cost = prices.claude_cost(msg.get("model"), inp, w5, w1h, read, out, speed, geo, searches)
+        mult = prices.fast_multiplier(msg.get("model"), speed)
         calls.append(Call(
             tool="claude", session=d.get("sessionId") or path.stem, project=project,
             ts=ts, model=msg.get("model"), prompt=inp + w5 + w1h + read, read=read,
-            w5=w5, w1h=w1h, uncached=inp, out=out,
-            cost=prices.claude_cost(msg.get("model"), inp, w5, w1h, read, out),
+            w5=w5, w1h=w1h, uncached=inp, out=out, cost=cost, speed=speed, geo=geo, searches=searches,
+            fast_extra=(cost - searches * prices.WEB_SEARCH) * (1 - 1 / mult) if (cost and mult > 1) else 0.0,
             subagent=bool(d.get("isSidechain")) if subagent is None else subagent))
     return calls
 
@@ -119,7 +126,7 @@ def _mark_rebuilds(calls):
             written = c.w5 + c.w1h
             if c.ts - prev.ts > ttl and c.prompt >= 20000 and written >= 0.6 * c.prompt:
                 c.rebuild = True
-                p = prices.claude_price(c.model)
+                p = prices.claude_rates(c.model, c.prompt, c.speed, c.geo)
                 if p:
                     c.rebuild_waste = (c.w5 * p["w5"] + c.w1h * p["w1h"] - written * p["read"]) / 1e6
 
@@ -139,7 +146,9 @@ def codex_meta(path):
     return {"id": path.stem[-36:], "parent": None, "agent": None, "role": None, "subagent": False}
 
 
-def codex_file_calls(path, since=None):
+def codex_file_calls(path, since=None, mult=None):
+    if mult is None:
+        mult = config.codex_speed()[1]
     calls, model, prev = [], None, None
     sub = codex_meta(path)["subagent"]
     for d in _lines(path):
@@ -166,7 +175,9 @@ def codex_file_calls(path, since=None):
         calls.append(Call(
             tool="codex", session=path.stem, project=None, ts=ts, model=model, prompt=inp,
             read=cached, w5=0, w1h=0, uncached=max(0, inp - cached), out=out,
-            cost=prices.codex_credits(model, max(0, inp - cached), cached, out), subagent=sub))
+            cost=prices.codex_credits(model, max(0, inp - cached), cached, out, mult), subagent=sub,
+            speed=None if mult == 1 else "fast",
+            fast_extra=(prices.codex_credits(model, max(0, inp - cached), cached, out, mult) or 0) * (1 - 1 / mult)))
     return calls
 
 
@@ -176,9 +187,9 @@ def codex_files(since=None, home=None):
 
 
 def codex_calls(since=None, home=None):
-    calls = []
+    calls, mult = [], config.codex_speed()[1]
     for path in codex_files(since, home):
-        calls += codex_file_calls(path, since)
+        calls += codex_file_calls(path, since, mult)
     return calls
 
 

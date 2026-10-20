@@ -82,22 +82,53 @@ def codex_price(model):
     return _match(CODEX, model)
 
 
-def claude_cost(model, inp=0, w5=0, w1h=0, read=0, out=0):
-    """Dollars for one Claude response. None if the model has no price."""
+# Fast mode: Opus at premium rates ($8/$40 on Opus 5.5, $10/$50 on Opus 5 and 4.8), i.e. 2x every rate;
+# the cache multipliers apply on top. Claude Code records it per call as usage.speed == "fast".
+FAST = {"claude-opus-5-5": 2.0, "claude-opus-5": 2.0, "claude-opus-4-8": 2.0}
+# US-only inference (usage.inference_geo == "us"): 1.1x on every rate, Claude 4.6 and later.
+US_GEO = 1.1
+WEB_SEARCH = 10.0 / 1000          # $ per web search, on top of tokens
+# Codex Fast / Ultrafast: x2 / x6 on purchased credits and pay-as-you-go; x2.5 / x8 on included plan usage.
+CODEX_SPEED = {"credits": {"standard": 1.0, "fast": 2.0, "ultrafast": 6.0},
+               "plan": {"standard": 1.0, "fast": 2.5, "ultrafast": 8.0}}
+
+
+def fast_multiplier(model, speed):
+    if speed != "fast" or not model:
+        return 1.0
+    m = model.lower()
+    best = None
+    for key in FAST:
+        if m.startswith(key) and (best is None or len(key) > len(best)):
+            best = key
+    return FAST[best] if best else 1.0
+
+
+def claude_rates(model, prompt=0, speed=None, geo=None):
+    """$ per million tokens for one response: base, Haiku long-prompt step, fast mode, data residency."""
     p = claude_price(model)
     if p is None:
         return None
-    if "long" in p and (inp + w5 + w1h + read) > p.get("long_at", 1e18):
+    if "long" in p and prompt > p.get("long_at", 1e18):
         p = p["long"]
-    return (inp * p["inp"] + w5 * p["w5"] + w1h * p["w1h"] + read * p["read"] + out * p["out"]) / 1e6
+    mult = fast_multiplier(model, speed) * (US_GEO if geo == "us" else 1.0)
+    return {k: p[k] * mult for k in ("inp", "w5", "w1h", "read", "out")}
 
 
-def codex_credits(model, uncached=0, cached=0, out=0):
-    """Credits for Codex usage. None if the model has no price."""
+def claude_cost(model, inp=0, w5=0, w1h=0, read=0, out=0, speed=None, geo=None, searches=0):
+    """Dollars for one Claude response. None if the model has no price."""
+    p = claude_rates(model, inp + w5 + w1h + read, speed, geo)
+    if p is None:
+        return None
+    return (inp * p["inp"] + w5 * p["w5"] + w1h * p["w1h"] + read * p["read"] + out * p["out"]) / 1e6 + searches * WEB_SEARCH
+
+
+def codex_credits(model, uncached=0, cached=0, out=0, mult=1.0):
+    """Credits for Codex usage. None if the model has no price. mult: the Fast/Ultrafast multiplier."""
     p = codex_price(model)
     if p is None:
         return None
-    return (uncached * p["inp"] + cached * p["cached"] + out * p["out"]) / 1e6
+    return (uncached * p["inp"] + cached * p["cached"] + out * p["out"]) * mult / 1e6
 
 
 def is_frontier(model):

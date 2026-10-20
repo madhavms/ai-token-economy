@@ -475,6 +475,51 @@ class Why(unittest.TestCase):
                 os.environ.pop("CODEX_HOME", None)
 
 
+class SpeedAndRegion(unittest.TestCase):
+    def test_fast_mode_region_and_search_pricing(self):
+        base = prices.claude_cost("claude-opus-5-5", 0, 1000, 0, 100000, 2000)
+        fast = prices.claude_cost("claude-opus-5-5", 0, 1000, 0, 100000, 2000, speed="fast")
+        self.assertAlmostEqual(fast, 2 * base)
+        self.assertAlmostEqual(prices.claude_cost("claude-opus-5-5", 1000000, speed="fast"), 8.0)     # $8 / MTok input
+        self.assertAlmostEqual(prices.claude_cost("claude-opus-5-5", 0, out=1000000, speed="fast"), 40.0)
+        self.assertAlmostEqual(prices.claude_cost("claude-sonnet-5-5", 1000000, speed="fast"), 2.0)  # Sonnet has no fast mode
+        self.assertAlmostEqual(prices.claude_cost("claude-sonnet-5-5", 1000000, geo="us"), 2.2)
+        self.assertAlmostEqual(prices.claude_cost("claude-sonnet-5-5", 0, searches=3), 0.03)
+        self.assertAlmostEqual(prices.codex_credits("gpt-6.1-sol", 1e6, 0, 0, 2.0), 100)
+
+    def test_logs_and_why_use_speed_and_flag_a_switch(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            rows = [claude_row("2026-10-01T10:00:00Z", "m1", "r1", read=0, w5=30000),
+                    claude_row("2026-10-01T10:01:00Z", "m2", "r2", read=0, w5=31000)]   # fast turned on: all rewritten
+            rows[1]["message"]["usage"]["speed"] = "fast"
+            rows[0]["message"]["usage"]["speed"] = "standard"
+            rows[1]["message"]["usage"]["server_tool_use"] = {"web_search_requests": 2}
+            path = home / "projects" / "-repo" / "s1.jsonl"
+            write_jsonl(path, rows)
+            calls = sorted(logs.claude_file_calls(path), key=lambda c: c.ts)
+            self.assertAlmostEqual(calls[1].cost, prices.claude_cost("claude-opus-5-5", 2, 31000, 0, 0, 100) * 2 + 0.02)
+            self.assertGreater(calls[1].fast_extra, 0)
+            s, r = analyze.analyze_file(path, "claude")
+            self.assertAlmostEqual(s["lead_cost"], sum(c.cost for c in calls), places=9)
+            self.assertAlmostEqual(sum(s["categories"].values()), s["cost"], places=9)
+            self.assertEqual(s["switch_rebuilds"], 1)
+            self.assertAlmostEqual(s["categories"]["web"], 0.02)
+            self.assertIn("fast", [f["key"] for f in s["levers"]])
+
+    def test_codex_speed_from_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ.update(CODEX_HOME=d, TKE_HOME=os.path.join(d, "tke"))
+            try:
+                Path(d, "config.toml").write_text('model = "gpt-6.1-sol"\nservice_tier = "fast"\n[profiles.x]\nservice_tier = "flex"\n')
+                from token_economy import config as cfgmod
+                self.assertEqual(cfgmod.codex_speed()[:2], ("fast", 2.0))
+                self.assertEqual(cfgmod.codex_speed({"codex_speed": "ultrafast", "codex_billing": "plan"})[:2], ("ultrafast", 8.0))
+            finally:
+                os.environ.pop("CODEX_HOME", None)
+                os.environ.pop("TKE_HOME", None)
+
+
 class Route(unittest.TestCase):
     def test_first_yes_wins(self):
         self.assertEqual(route.decide({"check": True, "hard": True}), "fast")

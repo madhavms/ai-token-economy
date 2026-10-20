@@ -247,6 +247,21 @@ Thresholds are environment variables: `TKE_READ_MAX_BYTES`, `TKE_SLEEP_MAX_SEC`,
 
 - Appends short token rules to `CLAUDE.md` and `AGENTS.md`, and adds a `SPEC.md` template: files, out of scope, the command that proves it works.
 
+## Settings that change the price
+
+`tke` prices every call with the settings that call actually ran under:
+
+| Setting | Effect on price | How tke knows |
+|---|---|---|
+| Claude **fast mode** (`/fast`, `"fastMode": true`) | Opus 5.5, Opus 5 and Opus 4.8 at 2x every rate ($8/$40 on Opus 5.5); on a subscription it is paid from usage credits, not plan limits | `usage.speed` on each call in the transcript |
+| Turning fast mode on, or switching model, mid-session | the whole conversation is written again at the new rate | detected per call and reported as *cache rebuilt (break or switch)* |
+| **US-only inference** (data residency) | 1.1x every rate | `usage.inference_geo` on each call |
+| Claude **web search** | $10 per 1,000 searches on top of tokens | `usage.server_tool_use.web_search_requests` |
+| Haiku 5.5 prompts over 100K tokens | 5x every rate | the prompt size of each call |
+| Codex **Fast / Ultrafast** | 2x / 6x credits (2.5x / 8x of included plan usage) | Codex logs don't record speed per turn: `tke` reads `service_tier` from `~/.codex/config.toml`, or set `"codex_speed"` and `"codex_billing"` in tke's `config.json` |
+
+Setup health flags `fastMode` left on (with the fast-mode premium measured from your logs) and a Codex fast tier.
+
 ## How the numbers are computed
 
 - **Claude Code:** `~/.claude/projects/**/*.jsonl`, including subagents. A reply that spans several lines is counted once, by message id and request id. Cost = input + 5-minute writes + 1-hour writes + cache reads + output, each at its own price.

@@ -65,21 +65,22 @@ def leaks(calls, big_context):
         "fat_context": sum(c.cost for c in priced if c.prompt >= big_context),
         "frontier": sum(c.cost for c in priced if prices.is_frontier(c.model)),
         "subagents": sum(c.cost for c in priced if c.subagent),
+        "fast": sum(c.fast_extra or 0 for c in priced),
+        "searches": sum(c.searches or 0 for c in priced),
     }
     reads = writes = outs = 0.0
     for c in priced:
         if c.tool == "claude":
-            p = prices.claude_price(c.model)
-            if "long" in p and c.prompt > p.get("long_at", 1e18):
-                p = p["long"]
+            p = prices.claude_rates(c.model, c.prompt, c.speed, c.geo)
             reads += c.read * p["read"] / 1e6
-            writes += (c.w5 * p["w5"] + c.w1h * p["w1h"] + c.uncached * p["inp"]) / 1e6
+            writes += (c.w5 * p["w5"] + c.w1h * p["w1h"] + c.uncached * p["inp"]) / 1e6 + (c.searches or 0) * prices.WEB_SEARCH
             outs += c.out * p["out"] / 1e6
         else:
             p = prices.codex_price(c.model)
-            reads += c.read * p["cached"] / 1e6
-            writes += c.uncached * p["inp"] / 1e6
-            outs += c.out * p["out"] / 1e6
+            m = 1.0 / (1 - c.fast_extra / c.cost) if (c.cost and c.fast_extra) else 1.0
+            reads += c.read * p["cached"] * m / 1e6
+            writes += c.uncached * p["inp"] * m / 1e6
+            outs += c.out * p["out"] * m / 1e6
     res.update({"reads": reads, "writes": writes, "output": outs})
     return res
 
@@ -140,6 +141,8 @@ TIPS = {
     "fanout": "Subagents and agent teams: run them on a cheaper model (Explore on Haiku), fan out only for "
               "truly parallel work.",
     "output": "Output is a big share: lower effort for routine work (medium, or low for chores).",
+    "fast": "Fast mode doubles every Opus rate (and on a subscription it is paid from usage credits, not the plan): "
+            "turn it off with /fast, or set fastModePerSessionOptIn so it doesn't carry into new sessions.",
 }
 
 
@@ -156,4 +159,6 @@ def tips_for(lk):
         out.append(TIPS["fanout"])
     if lk["output"] / t > 0.45:
         out.append(TIPS["output"])
+    if lk.get("fast", 0) / t > 0.05:
+        out.append(TIPS["fast"])
     return out

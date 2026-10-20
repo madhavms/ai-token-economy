@@ -26,7 +26,7 @@ from . import config, logs, prices
 
 FIVE_MIN = timedelta(minutes=5)
 ONE_HOUR = timedelta(hours=1)
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 
 # key: (label, what to do about it)
 CATEGORIES = OrderedDict([
@@ -49,8 +49,9 @@ CATEGORIES = OrderedDict([
                    "replies and targeted edits.")),
     ("compact", ("Compacted summary", "")),
     ("output", ("Output and thinking", "Lower effort for routine work (medium, or low for chores); thinking is billed as output.")),
-    ("rebuild", ("Cache rebuilt after a break", "The cache had expired, so the whole prompt was written again. Set a 1-hour "
-                 "cache (promptCacheTtl) or /clear before a long break.")),
+    ("rebuild", ("Cache rebuilt (break or switch)", "The whole prompt was written again: after a break longer than the cache "
+                 "lifetime, or after switching model or fast mode mid-session. Set a 1-hour cache (promptCacheTtl), "
+                 "/clear before a long break, and pick the model and speed when the session starts.")),
     ("subagents", ("Subagents' own work", "Run search and scoping subagents on a small model with a turn cap (tke agents).")),
 ])
 
@@ -300,18 +301,17 @@ def codex_events(path):
 
 
 # ------------------------------------------------------------------ pricing
-def _unit_prices(tool, model, prompt):
+def _unit_prices(tool, model, prompt, speed=None, geo=None, mult=1.0):
     """$ (or credits) per token for read, write-5m, write-1h, uncached input, output."""
     if tool == "codex":
         p = prices.codex_price(model)
         if not p:
             return None
-        return {"read": p["cached"] / 1e6, "w5": p["inp"] / 1e6, "w1h": p["inp"] / 1e6, "inp": p["inp"] / 1e6, "out": p["out"] / 1e6}
-    p = prices.claude_price(model)
+        m = mult / 1e6
+        return {"read": p["cached"] * m, "w5": p["inp"] * m, "w1h": p["inp"] * m, "inp": p["inp"] * m, "out": p["out"] * m}
+    p = prices.claude_rates(model, prompt, speed, geo)
     if not p:
         return None
-    if "long" in p and prompt > p.get("long_at", 1e18):
-        p = p["long"]
     return {k: p[k] / 1e6 for k in ("read", "w5", "w1h", "inp", "out")}
 
 
@@ -341,7 +341,7 @@ class Item:
         return self.write + self.read
 
 
-def decompose(events, tool="claude", big_context=150000):
+def decompose(events, tool="claude", big_context=150000, codex_mult=1.0):
     items, pending, retired = [], [], []
     startup = None
     cat_cost = defaultdict(float)
@@ -364,13 +364,20 @@ def decompose(events, tool="claude", big_context=150000):
             continue
         new = u["w5"] + u["w1h"] + u["uncached"]
         snap = dict(cat_cost)
-        p = _unit_prices(tool, ev["model"], prompt)
+        speed, geo = ev["usage"].get("speed"), ev["usage"].get("inference_geo")
+        if tool == "codex" and codex_mult != 1.0:
+            speed = "fast"
+        searches = ((ev["usage"].get("server_tool_use") or {}).get("web_search_requests") or 0)
+        p = _unit_prices(tool, ev["model"], prompt, speed, geo, codex_mult)
         if p is None:
             unpriced.add(ev["model"] or "?")
             p = {"read": 0, "w5": 0, "w1h": 0, "inp": 0, "out": 0}
         c_read = u["read"] * p["read"]
         c_write = u["w5"] * p["w5"] + u["w1h"] * p["w1h"] + u["uncached"] * p["inp"]
         c_out = u["out"] * p["out"]
+        c_search = searches * prices.WEB_SEARCH
+        fmult = (codex_mult if tool == "codex" else prices.fast_multiplier(ev["model"], speed))
+        fast_extra = (c_read + c_write + c_out) * (1 - 1 / fmult) if fmult > 1 else 0.0
         gap = (ev["ts"] - prev["ts"]) if (prev and ev["ts"] and prev["ts"]) else timedelta(0)
         compaction = bool(prev) and (reset or (prompt < 0.6 * prev["prompt"] and prompt > 0))
         if tool == "codex":
@@ -378,6 +385,9 @@ def decompose(events, tool="claude", big_context=150000):
         else:
             ttl = ONE_HOUR if (prev and prev["w1h"]) else FIVE_MIN
             rebuild = bool(prev) and not compaction and gap > ttl and prompt >= 20000 and new >= 0.6 * prompt
+        switched = bool(prev) and not compaction and (prev["model"] != ev["model"] or prev["speed"] != speed)
+        switch_rebuild = switched and prompt >= 20000 and new >= 0.6 * prompt and not rebuild
+        rebuild = rebuild or switch_rebuild
         reset = False
 
         est = sum(i.chars for i in pending) / 4.0
@@ -419,7 +429,8 @@ def decompose(events, tool="claude", big_context=150000):
         items.extend(pending)
         pending = []
         cat_cost["output"] += c_out
-        cost = c_read + c_write + c_out
+        cat_cost["web"] += c_search
+        cost = c_read + c_write + c_out + c_search
         day = ev["ts"].astimezone().date().isoformat() if ev["ts"] else "?"
         for k, v in cat_cost.items():
             delta = v - snap.get(k, 0.0)
@@ -429,8 +440,9 @@ def decompose(events, tool="claude", big_context=150000):
         rows.append({"i": len(rows), "ts": ev["ts"], "model": ev["model"], "prompt": prompt, "read": u["read"],
                      "new": new, "out": u["out"], "cost": cost, "rebuild": rebuild, "compaction": compaction,
                      "gap": gap.total_seconds(), "tools": ev.get("tools", []), "w1h": u["w1h"],
-                     "c_read": c_read, "c_write": c_write, "c_out": c_out})
-        prev = {"ts": ev["ts"], "prompt": prompt, "w1h": u["w1h"]}
+                     "c_read": c_read, "c_write": c_write, "c_out": c_out, "speed": speed, "geo": geo,
+                     "searches": searches, "fast_extra": fast_extra, "switch": switch_rebuild})
+        prev = {"ts": ev["ts"], "prompt": prompt, "w1h": u["w1h"], "model": ev["model"], "speed": speed}
         # this call's reply is in the next call's prompt
         if ev.get("out_chars"):
             who = "Claude" if tool == "claude" else "Codex"
@@ -511,7 +523,7 @@ def codex_children(path, all_files=None):
 def analyze_file(path, tool, big_context=150000, codex_all=None):
     path = Path(path)
     events, meta = (claude_events if tool == "claude" else codex_events)(path)
-    res = decompose(events, tool, big_context)
+    res = decompose(events, tool, big_context, config.codex_speed()[1] if tool == "codex" else 1.0)
     subs = subagent_runs(path) if tool == "claude" else codex_children(path, codex_all)
     rows = res["rows"]
     lead = sum(r["cost"] for r in rows)
@@ -579,6 +591,12 @@ def analyze_file(path, tool, big_context=150000, codex_all=None):
         "output_tokens": sum(r["out"] for r in rows),
         "read_tokens": sum(r["read"] for r in rows), "new_tokens": sum(r["new"] for r in rows),
     }
+    out["fast_calls"] = sum(1 for r in rows if r.get("fast_extra"))
+    out["fast_extra"] = sum(r.get("fast_extra", 0) for r in rows)
+    out["switch_rebuilds"] = sum(1 for r in rows if r.get("switch"))
+    out["switch_cost"] = sum(r["c_write"] for r in rows if r.get("switch"))
+    out["searches"] = sum(r.get("searches", 0) for r in rows)
+    out["us_geo_calls"] = sum(1 for r in rows if r.get("geo") == "us")
     out["premium"] = model_premium(rows, tool)
     out["haiku_long"] = haiku_long_surcharge(rows)
     f = findings(out)
@@ -685,6 +703,16 @@ def findings(s):
     if v > 0.02 * total:
         add(levers, "rebuild", v, "Breaks: %s re-writing an expired cache %d time%s" % (money(v, unit), s["rebuilds"], "" if s["rebuilds"] == 1 else "s"),
             "Each break longer than the cache lifetime wrote the whole prompt again.", CATEGORIES["rebuild"][1])
+    if s.get("fast_extra", 0) > 0.01 * total:
+        add(levers, "fast", s["fast_extra"], "Fast mode: %s more than standard speed on %d calls" % (money(s["fast_extra"], unit), s["fast_calls"]),
+            "Fast mode bills Opus at 2x every rate (Codex: 2x credits, 6x for Ultrafast). On a Claude subscription it is "
+            "paid from usage credits even when plan usage is left, and it stays on for new sessions until turned off.",
+            "Turn it off with /fast unless you are waiting on every reply; set fastModePerSessionOptIn so it doesn't carry over.")
+    if s.get("switch_rebuilds"):
+        add(levers, "switch", s.get("switch_cost", 0), "Switched model or speed mid-session %d time%s: %s" % (
+            s["switch_rebuilds"], "" if s["switch_rebuilds"] == 1 else "s", money(s.get("switch_cost", 0), unit)),
+            "Each switch wrote the whole conversation again at the new model's write price (counted under cache rebuilds).",
+            "Choose the model and fast mode when the session starts; start a new session to change them.")
     hl = s["haiku_long"]
     if hl["extra"] > 0:
         add(levers, "haiku_long", hl["extra"], "Haiku over 100K tokens: %s extra on %d calls" % (money(hl["extra"], unit), hl["calls"]),

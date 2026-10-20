@@ -103,7 +103,8 @@ def period_text(sessions, label, top=8, brief=False, since_day=None, until_day=N
         if lv:
             names = {"big": "Calls over 150K tokens", "model": "Top-tier model premium (vs the everyday model)",
                      "rebuild": "Cache rebuilt after breaks", "haiku_long": "Haiku over 100K tokens",
-                     "repeat": "The same result loaded repeatedly", "startup": "Heavy startup context"}
+                     "repeat": "The same result loaded repeatedly", "startup": "Heavy startup context",
+                     "fast": "Fast mode premium (over standard speed)", "switch": "Model or speed switched mid-session"}
             L.append("")
             L.append("Levers (dollars at stake; they overlap)")
             for k, v in lv:

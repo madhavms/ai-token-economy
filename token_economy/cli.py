@@ -74,6 +74,10 @@ def cmd_report(a):
     print("AI token economy · %s · prices as of %s · API-equivalent list prices\n" % (now.strftime("%a %d %b %Y"), prices.PRICES_DATE))
     print("\n".join(_pace_lines("Claude", "$", pc) + [""] + _pace_lines("Codex", "cr", px)))
 
+    cs = config.codex_speed(cfg)
+    if cs[0] != "standard":
+        print("Codex priced at %s speed (x%g, from %s). Codex logs don't record speed per turn; set it with "
+              "codex_speed in tke's config.json.\n" % (cs[0], cs[1], cs[2]))
     print("\nLast 7 days")
     for d, cl, cx in report.daily(calls, 7, now):
         print("  %s   Claude %8s   Codex %10s" % (d.strftime("%a %d %b"), money(cl), money(cx, "cr")))
@@ -92,7 +96,8 @@ def cmd_report(a):
             rows.append(("  of which: rebuilds after breaks, avoidable", lk["rebuild_waste"]))
         rows += [("  calls with a prompt over %dk tokens" % (cfg["big_context"] // 1000), lk["fat_context"]),
                  ("  frontier models (Fable, Astra)", lk["frontier"]),
-                 ("  subagents", lk["subagents"])]
+                 ("  subagents", lk["subagents"]),
+                 ("  fast mode premium (over standard)", lk.get("fast", 0))]
         for label, v in rows:
             print("  %-46s %10s  %3.0f%%" % (label, money(v, unit), 100 * v / t))
         if lk["unpriced_models"]:

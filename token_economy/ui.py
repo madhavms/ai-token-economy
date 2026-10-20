@@ -133,12 +133,15 @@ def overview(period, tool, project=None, refresh=False):
     pace["last_month"] = last_month
     names = {"big": "Calls over %dK tokens" % (cfg["big_context"] // 1000), "model": "Top-tier model premium",
              "rebuild": "Cache rebuilt after breaks", "haiku_long": "Haiku over 100K tokens",
-             "repeat": "Same result loaded repeatedly", "startup": "Heavy startup context"}
+             "repeat": "Same result loaded repeatedly", "startup": "Heavy startup context",
+             "fast": "Fast mode premium", "switch": "Model or speed switched mid-session"}
     fix = {"big": "Fresh session per task or phase (/clear), with a short handoff note; compact earlier.",
            "model": "Start routine work on the everyday model; switch up on purpose for hard problems.",
            "rebuild": analyze.CATEGORIES["rebuild"][1], "haiku_long": "Cap Haiku subagents with maxTurns and narrow briefs.",
            "repeat": "Read it once and refer back, or read only the part that changed.",
-           "startup": analyze.CATEGORIES["startup"][1]}
+           "startup": analyze.CATEGORIES["startup"][1],
+           "fast": "Turn fast mode off (/fast) unless you wait on every reply; set fastModePerSessionOptIn.",
+           "switch": "Pick the model and speed when the session starts; start a new session to change them."}
     causes = sorted(({"key": k, "label": analyze.CATEGORIES[k][0], "fix": analyze.CATEGORIES[k][1], "cost": v}
                      for (u, k), v in agg["categories"].items() if u == unit and v > 0), key=lambda r: -r["cost"])
     levers = sorted(({"key": k, "label": names.get(k, k), "fix": fix.get(k, ""), "cost": v}

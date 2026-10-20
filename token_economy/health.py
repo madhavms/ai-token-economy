@@ -48,6 +48,20 @@ def check():
     win = env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") or s.get("autoCompactWindow")
     add("Claude Code", "Auto-compact backstop", bool(win), win or "near 1M tokens",
         "Without it a forgotten session can grow towards 1M tokens, re-read on every call.")
+    fast_on = s.get("fastMode") is True
+    try:
+        from datetime import datetime, timedelta, timezone
+        from . import logs
+        recent = logs.claude_calls(datetime.now(timezone.utc) - timedelta(days=30))
+        fast_extra = sum(c.fast_extra or 0 for c in recent)
+        total = sum(c.cost or 0 for c in recent) or 1e-9
+    except Exception:
+        fast_extra, total = 0.0, 1e-9
+    add("Claude Code", "Fast mode off by default", not fast_on and fast_extra / total < 0.05,
+        ("on" if fast_on else "off") + " · fast-mode premium last 30 days $%.2f (%.0f%% of spend)" % (fast_extra, 100 * fast_extra / total),
+        "Fast mode bills Opus at 2x every rate, is paid from usage credits even when plan usage is left, and carries "
+        "into new sessions once turned on.",
+        'run /fast to turn it off; add "fastModePerSessionOptIn": true to settings.json so each session starts standard')
     add("Claude Code", "Agent teams off", not env.get("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"),
         "on" if env.get("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") else "off",
         "Agent teams use about 7x the tokens of a normal session.", "remove CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS from env")
@@ -64,6 +78,10 @@ def check():
             "Higher effort takes longer and uses more tokens.", "tke setup codex --apply --force")
         add("Codex", "Tool output cap", "tool_output_token_limit" in keys, keys.get("tool_output_token_limit", "not set"),
             "Caps how much of each tool's output is stored and re-sent.", "tke setup codex --apply")
+        speed, mult, src = config.codex_speed()
+        add("Codex", "Speed tier", speed in ("standard", "flex"), "%s (x%g, %s)" % (speed, mult, src),
+            "Codex Fast uses 2x credits (2.5x of included plan usage); Ultrafast 6x (8x).",
+            'remove service_tier = "fast" from ~/.codex/config.toml, or run /fast off in Codex')
         profiles = [n for n in ("luna", "astra") if (config.codex_home() / ("%s.config.toml" % n)).exists()]
         add("Codex", "Cheap and frontier profiles", len(profiles) == 2, ", ".join(profiles) or "none",
             "codex --profile luna for chores, --profile astra only on purpose.", "tke setup codex --apply")

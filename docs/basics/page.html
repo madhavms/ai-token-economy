@@ -129,7 +129,9 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
     <li><b>Output is 5× input</b> on every model above. Long answers and long thinking are the expensive kind of token.</li>
     <li><b>A cache read is 0.05× input</b> on Opus 5.5 and Sonnet 5.5, 0.1× on Haiku 5.5 and 0.025× on Fable 5.1. Reading 100,000 cached tokens on Sonnet costs $0.01; writing them costs $0.25 to $0.40.</li>
     <li><b>Haiku 5.5 has a size step.</b> Once a single request passes 100,000 tokens, every Haiku rate is 5× (input ${{haiku_long_inp}} instead of ${{haiku_inp}}).</li>
-    <li><b>Codex</b> is billed in credits with a cheaper rate for cached input and no separate charge for writing the cache. The ideas on this page carry over; the numbers differ.</li>
+    <li><b>Fast mode doubles every Opus rate.</b> It is the same model at higher speed: $8 / $40 per million on Opus 5.5 instead of $4 / $20, with the cache multipliers on top. On a Claude subscription it is paid from <i>usage credits</i>, not the plan, even when plan usage is left. Once turned on with <code>/fast</code> it carries into new sessions, and turning it on mid-session writes the whole conversation again at the fast uncached price.</li>
+    <li><b>US-only inference</b> (data residency) adds 10% to every rate, and <b>web search</b> adds $10 per 1,000 searches on top of the tokens it brings in.</li>
+    <li><b>Codex</b> is billed in credits with a cheaper rate for cached input and no separate charge for writing the cache. Its Fast mode costs 2× credits (2.5× of included plan usage) and Ultrafast 6× (8×). The ideas on this page carry over; the numbers differ.</li>
     <li><b>On a subscription</b> you don't see per-token bills, but usage is counted in the same tokens; tools like <code>tke</code> price them at these list rates so sessions can be compared.</li>
   </ul>
 </section>
@@ -257,13 +259,14 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
 
 <section id="confusions">
   <div class="beat"><span>Common confusions</span></div>
-  <h2>Seven things that sound right and aren't</h2>
+  <h2>Eight things that sound right and aren't</h2>
   <div class="confusions">
     <div><span class="myth">"The model remembers our conversation."</span><span>It remembers nothing. The harness keeps the conversation and re-sends all of it on every call; that repeat is most of the bill.</span></div>
     <div><span class="myth">"The prompt cache is on my laptop."</span><span>It is on the provider's servers, per organisation, and lasts minutes. What's on your laptop are transcripts and settings.</span></div>
     <div><span class="myth">"A token is a word."</span><span>English averages {{en_tpw}} tokens per word here, and code packs fewer characters into each token than prose.</span></div>
     <div><span class="myth">"A long CLAUDE.md costs a fortune on every call."</span><span>Cached, it is cheap per call. The real costs are weaker adherence and the full re-write after every rebuild or edit.</span></div>
     <div><span class="myth">"Switching to a cheaper model halfway saves money."</span><span>The new model has a cold cache, so the whole history is written again at its write price. Choose the model when you start.</span></div>
+    <div><span class="myth">"Fast mode is just a nicer setting."</span><span>It doubles every Opus rate, is paid from usage credits even when plan usage is left, and stays on for new sessions until you turn it off.</span></div>
     <div><span class="myth">"Subagents always save tokens."</span><span>On the toy, the subagent version cost {{sub_vs}} more. They pay off for big side jobs on cheaper models.</span></div>
     <div><span class="myth">"Output is a small part of the bill."</span><span>Output is 5× the input price, and thinking counts as output.</span></div>
   </div>
@@ -303,7 +306,7 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
   <ul class="sources">
     <li>Measurements: <code>docs/basics/measure.py</code> in this repo, run with Claude Code {{claude_version}} on {{date}}; raw numbers in <code>docs/basics/measured.json</code>. Costs priced with <code>token_economy/prices.py</code> (list prices as of {{prices_date}}).</li>
     <li>Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Prompt caching</a>: prefix order, 5-minute and 1-hour lifetimes, write and read multipliers, minimum lengths, isolation by organisation. Checked {{date}}.</li>
-    <li>Anthropic, <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a>: per-model rates and the Haiku 5.5 100K step.</li>
+    <li>Anthropic, <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a>: per-model rates, the Haiku 5.5 100K step, fast mode, data residency and web search fees. Claude Code docs, <a href="https://code.claude.com/docs/en/fast-mode">Fast mode</a>: usage credits, persistence, the mid-session cache cost. OpenAI, <a href="https://learn.chatgpt.com/docs/pricing">Codex pricing</a>: Fast and Ultrafast multipliers.</li>
     <li>Claude Code docs: <a href="https://code.claude.com/docs/en/memory">How Claude remembers your project</a> (CLAUDE.md locations, load order, 200-line advice, imports, comments, AGENTS.md, auto memory), <a href="https://code.claude.com/docs/en/sub-agents">Subagents</a> (fresh context, what loads, model order, built-in agents), <a href="https://code.claude.com/docs/en/prompt-caching">Prompt caching in Claude Code</a> (TTL by billing mode, <code>promptCacheTtl</code>). Checked {{date}}.</li>
     <li>OpenAI, <a href="https://learn.chatgpt.com/docs/agent-configuration/subagents">Codex subagents</a> and GitHub, <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli">Copilot CLI custom agents</a>: the same loop and subagent ideas in the other harnesses.</li>
     <li>Logos: <a href="https://simpleicons.org">simple-icons</a> 16.35.0 (CC0), used only to name the products.</li>
