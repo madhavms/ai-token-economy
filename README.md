@@ -1,6 +1,6 @@
 # ai-token-economy
 
-**Make a monthly AI coding budget last the month.** `tke` reads the logs that Claude Code and Codex already write on your machine, tells you where the tokens went and when the budget will run out, and applies the settings and hooks that stop the biggest leaks. It also audits how you use subagents and sets up cheap, role-based subagents for Claude Code, Codex and Copilot CLI.
+**Make a monthly AI coding budget last the month.** `tke` reads the logs that Claude Code and Codex already write on your machine, tells you where the tokens went and when the budget will run out, and applies the settings and hooks that stop the biggest leaks. It explains why each session cost what it did, down to the file read or command output that was re-read on every call, and serves the same answers to your agent over MCP. It also audits how you use subagents and sets up cheap, role-based subagents for Claude Code, Codex and Copilot CLI.
 
 It runs offline, has no dependencies (Python 3.8+ standard library), and **never calls a model, so it spends zero tokens.**
 
@@ -53,21 +53,90 @@ The tool never calls a model, so an agent only needs to run commands. A short pr
 
 Then run `python tke.py ui` yourself. It's a long-running server, so don't leave an agent session sitting on it.
 
+## Why did it cost that?
+
+Every model call re-sends the whole conversation, so a session's bill is set by what sits in its context and
+how long it stays there. `tke why` splits the exact cost of every call over what was in the context at that call:
+
+- **read cost** (the cache re-reading the conversation) is shared over everything already in it, by size, so a
+  40K-token log read at call 12 is charged a little on every later call that re-reads it;
+- **write cost** goes to what is new since the previous call (a tool result, your message, Claude's last reply,
+  a reminder), or to *cache rebuilt after a break* when the cache had expired and the whole prompt was written again;
+- **output** goes to *output and thinking*.
+
+The parts add up to the session's cost exactly (checked against the plain per-call sum on real sessions).
+Item sizes are estimated from their length and scaled to the exact new-token count the API reported for that call.
+
+```bash
+python tke.py why                 # the latest session
+python tke.py why current         # the latest session in this folder
+python tke.py why 0adddae8        # a session by id (or prefix); --calls adds the call-by-call table
+python tke.py why week            # a period: today, week, month, lastmonth, 7d, 30d; --project, --tool
+```
+
+It reports:
+
+- **Causes** that add up to the total: startup context (system prompt, tools, CLAUDE.md, MCP and skill
+  listings), file reads, command output, search results, web pages, MCP results, subagent reports, edits,
+  your messages, reminders and hook output, earlier replies and tool calls, output and thinking, cache rebuilds,
+  and the subagents' own work.
+- **Levers**, with dollars at stake (they overlap the causes): calls over 150K tokens, the top-tier model
+  premium against the everyday model for the same tokens, breaks that expired the cache, Haiku requests over
+  100K tokens, the same result loaded repeatedly, and a heavy startup context.
+- **The costliest things in the context**: each file, command, search or subagent report, with its size,
+  how many calls carried it, and what writing and re-reading it cost.
+
+For a period, spend is counted by day, so a session that started last week only contributes this week's calls.
+Results are cached per log file, so after the first run a report takes a second or two.
+
+## Let your agent ask (MCP)
+
+`tke mcp` is a read-only MCP server over stdio, so Claude Code, Codex and Copilot CLI can answer *"why did this
+session cost so much?"* themselves, from the same numbers. It never calls a model and returns short reports.
+
+```bash
+python tke.py setup mcp            # preview
+python tke.py setup mcp --apply    # register with Claude Code (claude mcp add), Codex and Copilot CLI
+```
+
+| Tool | What it answers |
+|---|---|
+| `budget_status` | This month against the budgets: pace, today's allowance, run-out date. |
+| `why_session` | One session's causes, levers and costliest context items. `session`: `current` (latest in this folder), `latest`, or an id. |
+| `why_period` | A period by cause, lever, model and project, with the costliest sessions. |
+| `top_sessions` | The costliest sessions in a period, each with its main reason. |
+| `subagent_audit` | Agent files, lead against subagent spend, the weakest briefs. |
+
+In VS Code: Command Palette > *MCP: Add Server* > *Command (stdio)*, and paste the command `tke setup mcp` prints.
+
+Then ask in a session: *"Use tke: why did this session cost so much, and what should I change?"* In testing, a
+Sonnet session answered that from three tool calls for about $0.10.
+
 ## The control centre
 
 ```bash
 python tke.py ui
 ```
 
-Opens a local dashboard at http://127.0.0.1:8790 (the next free port if that one is taken). It reads the same logs, binds to your machine only, and never calls a model.
+Opens a local dashboard at http://127.0.0.1:8790 (the next free port if that one is taken). It reads the same logs, binds
+to your machine only, and never calls a model. Filters for tool, period (today, this week, 7 days, this month, 30 days,
+last month) and project sit at the top and scope every number below them. Light, dark or follow the system.
 
-- **Overview:** each budget with a "where you should be by today" marker, today against your daily allowance, the run-out date, spend per day against the allowance, where the money went with the fix for each leak, and the costliest sessions.
-- **Sessions:** click a session to see every call: how big the prompt was, where it crossed 150k tokens, where the cache went cold after a break, and the running cost. It then says in plain words what would have saved money, for example: *"The prompt passed 150k tokens at call 10. Every call after that re-read it: $142 (79% of this session)."*
-- **Setup health:** checks your Claude Code and Codex settings (cache lifetime, default model and effort, subagent model, Explore agent, hooks, compaction backstop, Codex model and profiles), explains each gap, and applies the fix with one click. Backups are made and your own values are kept unless you tick the box.
-- **Plan a task:** the routing questions and a cost estimate for a session before you start it.
-- **Budget:** edit your monthly budgets in place.
+- **Overview:** month-to-date spend against the budget with the "should be by today" mark, the projected month-end,
+  today against the daily allowance and the run-out date; the budget burn chart (spend to date against the pace that
+  lasts, with the projection); daily spend stacked by model; where the money went by cause; the biggest levers; the
+  costliest sessions; and spend by model, by project and by the costliest things carried in context.
+- **Sessions:** every session in the period, searchable and sortable, with its main reason. Open one to see its cost
+  split into causes, what to change, the context size call by call (with cache rebuilds and compactions marked), cost
+  per call, the costliest things in its context, its subagent runs and what was loaded more than once.
+- **Causes:** the cause split for the period, what each cause means and how to cut it, and the costliest things
+  carried across sessions.
+- **Subagents:** the `tke agents` audit: spend by subagent type, what to change, agent files and the weakest briefs.
+- **Setup:** the health checks with one-click fixes, the MCP connection, and your monthly budgets.
+- **Planner:** which model for a task, and what a session will cost before you start it.
 
-Changes made from the page need a per-launch token that only the page receives, and requests from any host other than localhost are refused.
+Every chart has a table view and a hover readout. Changes made from the page need a per-launch token that only the
+page receives, and requests from any host other than localhost are refused.
 
 ## Commands
 
@@ -81,6 +150,8 @@ Changes made from the page need a per-launch token that only the page receives, 
 | `tke estimate --model claude-opus-5-5 --calls 110 --start 32 --end 290 --breaks 5` | Price a session before you run it. |
 | `tke bench <source-dir> gpt-oss:20b` | Time a local Ollama model reading an agent-sized prompt, GPU on and off, to see whether local is usable on this machine. |
 | `tke ui` | The local control centre (see above). |
+| `tke why [latest\|current\|<id>\|period]` | Why a session or period cost what it did: causes that add up to the total, levers with dollars at stake, the costliest things in the context. `--calls`, `--json`. |
+| `tke mcp` | Run the read-only MCP server (stdio) so an agent can ask the same questions. `tke setup mcp --apply` registers it. |
 | `tke agents [period] [--dir repo] [--brief]` | Subagent audit: agent files for Claude Code, Codex and Copilot CLI, lead against subagent spend, cost per subagent type, the weakest briefs. `--prompt` prints a review prompt for any agent; `--json` for scripts. |
 | `tke setup roles --dir repo` | Write implementer, scoper and reviewer agent files for Claude Code, Codex and Copilot CLI, and the subagent rules to `CLAUDE.md` and `AGENTS.md`. Dry run unless `--apply`. |
 | `tke uninstall --apply` | Remove tke's hooks and status line from Claude Code. |

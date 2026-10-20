@@ -218,6 +218,55 @@ def plan_project(cwd):
     return files, notes
 
 
+def _cmd_parts(*args):
+    """(command, [args]) for launching tke from another program."""
+    py = Path(sys.executable).as_posix()
+    script = ROOT / "tke.py"
+    if script.exists():
+        return py, [script.as_posix()] + list(args)
+    return py, ["-m", "token_economy"] + list(args)
+
+
+def plan_mcp(tools=("claude", "codex", "copilot")):
+    """Register `tke mcp` with each agent. Returns (files, notes, commands to run)."""
+    cmd, args = _cmd_parts("mcp")
+    files, notes, commands = [], [], []
+    if "claude" in tools:
+        found = shutil.which("claude")
+        line = ["claude", "mcp", "add", "--scope", "user", "tke", "--", cmd] + args
+        if found:
+            commands.append([found] + line[1:])            # full path: on Windows it is claude.cmd
+            notes.append("Claude Code: run `%s`" % " ".join(_q(x) for x in line))
+        else:
+            notes.append("Claude Code not on PATH; run this yourself: %s" % " ".join(_q(x) for x in line))
+    if "codex" in tools:
+        path = config.codex_home() / "config.toml"
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        if "[mcp_servers.tke]" in text:
+            notes.append("Codex already has [mcp_servers.tke] in %s" % path)
+        else:
+            block = "\n[mcp_servers.tke]\ncommand = '%s'\nargs = [%s]\n" % (cmd, ", ".join("'%s'" % a for a in args))
+            files.append((path, text.rstrip("\n") + "\n" + block))
+            notes.append("Codex: add [mcp_servers.tke] to %s" % path)
+    if "copilot" in tools:
+        path = Path.home() / ".copilot" / "mcp-config.json"
+        cur = _load_json(path)
+        servers = cur.setdefault("mcpServers", {})
+        entry = {"type": "local", "command": cmd, "args": args, "env": {}, "tools": ["*"]}
+        if servers.get("tke") == entry:
+            notes.append("Copilot CLI already has tke in %s" % path)
+        else:
+            servers["tke"] = entry
+            files.append((path, json.dumps(cur, indent=2) + "\n"))
+            notes.append("Copilot CLI: add tke to %s" % path)
+    notes.append("VS Code: Command Palette > MCP: Add Server > Command (stdio) > %s" % " ".join(_q(x) for x in [cmd] + args))
+    return files, notes, commands
+
+
+def _q(x):
+    return '"%s"' % x if (" " in x or "\\" in x) else x
+
+
 ROLE_FILES = {
     "claude": (".claude/agents", "claude", ".md"),
     "codex": (".codex/agents", "codex", ".toml"),

@@ -21,6 +21,8 @@ def since_for(period, now):
         return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     if period.endswith("d") and period[:-1].isdigit():
         return now - timedelta(days=int(period[:-1]))
+    if period == "lastmonth":
+        return report.month_start(report.month_start(now) - timedelta(days=1))
     return report.month_start(now)
 
 
@@ -168,15 +170,25 @@ def cmd_statusline(a):
 
 def cmd_setup(a):
     targets = a.target or ["claude", "codex"]
-    bad = [t for t in targets if t not in ("claude", "codex", "project", "roles")]
+    bad = [t for t in targets if t not in ("claude", "codex", "project", "roles", "mcp")]
     if bad:
-        sys.exit("tke setup: unknown target %s (choose from claude, codex, project, roles)" % ", ".join(bad))
+        sys.exit("tke setup: unknown target %s (choose from claude, codex, project, roles, mcp)" % ", ".join(bad))
     for t in targets:
         print("\n== %s" % t)
         if t == "claude":
             files, notes = setup.plan_claude(force=a.force, statusline=not a.no_statusline)
         elif t == "codex":
             files, notes = setup.plan_codex(force=a.force, model=a.codex_model)
+        elif t == "mcp":
+            tools = [x.strip() for x in a.tools.split(",") if x.strip()]
+            files, notes, commands = setup.plan_mcp(tools)
+            setup.run(files, notes, a.apply)
+            if a.apply:
+                import subprocess
+                for c in commands:
+                    r = subprocess.run(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                    print("ran %s: %s" % (" ".join(c[:5]), (r.stdout or "").strip().splitlines()[-1:] or "ok"))
+            continue
         elif t == "roles":
             tools = [x.strip() for x in a.tools.split(",") if x.strip()]
             unknown = [x for x in tools if x not in setup.ROLE_FILES]
@@ -255,6 +267,53 @@ def cmd_agents(a):
     print("\nCopilot CLI usage isn't read here (its logs don't record per-agent cost); its agent files are checked above.")
 
 
+PERIODS = ("today", "week", "month", "lastmonth")
+
+
+def _is_period(t):
+    return t in PERIODS or (t.endswith("d") and t[:-1].isdigit())
+
+
+def cmd_why(a):
+    from . import analyze, explain
+    import os
+    cfg = config.load()
+    target = a.target or "latest"
+    tool = a.tool if a.tool != "all" else None
+    if _is_period(target):
+        now = report.local_now()
+        since = since_for(target, now)
+        sessions = analyze.summaries(since, tool, cfg["big_context"])
+        if a.project:
+            sessions = [s for s in sessions if a.project.lower() in (s["project"] + s["cwd"]).lower()]
+        if a.json:
+            agg = analyze.period_report(sessions, since.date().isoformat())
+            print(json.dumps({"period": target, "since": since.date().isoformat(),
+                              "totals": agg["totals"], "sessions": agg["sessions"]}, default=str, indent=2))
+            return
+        print(explain.period_text(sessions, target, a.top, a.brief, since.date().isoformat(),
+                                  (report.month_start(now) - timedelta(days=1)).date().isoformat() if target == "lastmonth" else None))
+        return
+    s, rows = analyze.explain(target, os.getcwd(), cfg["big_context"])
+    if s is None and target in ("latest", "current", "last"):
+        print("No Claude Code or Codex sessions found on this machine yet.")
+        return
+    if s is None:
+        sys.exit("tke why: no session matches %r (try latest, current, a session id, or a period like week)" % target)
+    if a.json:
+        out = dict(s)
+        if a.calls:
+            out["rows"] = rows
+        print(json.dumps(out, default=str, indent=2))
+        return
+    print(explain.session_text(s, rows, a.calls, a.brief))
+
+
+def cmd_mcp(a):
+    from . import mcp
+    mcp.serve()
+
+
 def cmd_uninstall(a):
     files, notes = setup.unplan_claude()
     setup.run(files, notes, a.apply)
@@ -324,14 +383,27 @@ def main(argv=None):
 
     p = sub.add_parser("setup", help="apply the recommended settings (dry run unless --apply)")
     # no choices=: Python 3.8 argparse rejects an empty list against choices
-    p.add_argument("target", nargs="*", help="claude | codex | project | roles (default: claude codex)")
+    p.add_argument("target", nargs="*", help="claude | codex | project | roles | mcp (default: claude codex)")
     p.add_argument("--apply", action="store_true", help="write the changes (backups are made)")
     p.add_argument("--force", action="store_true", help="replace values you already set")
     p.add_argument("--no-statusline", action="store_true")
     p.add_argument("--codex-model", help="everyday Codex model (default gpt-6.1-sol)")
     p.add_argument("--dir", default=".", help="project folder for the 'project' and 'roles' targets")
-    p.add_argument("--tools", default="claude,codex,copilot", help="for 'roles': which tools get agent files")
+    p.add_argument("--tools", default="claude,codex,copilot", help="for 'roles' and 'mcp': which tools to set up")
     p.set_defaults(fn=cmd_setup)
+
+    p = sub.add_parser("why", help="why a session or period cost what it did: causes, levers, costliest context")
+    p.add_argument("target", nargs="?", help="latest (default) | current | <session id> | today | week | month | Nd")
+    p.add_argument("--tool", default="all", help="claude | codex | all (for periods)")
+    p.add_argument("--project", help="periods: only sessions whose project or folder contains this text")
+    p.add_argument("--calls", action="store_true", help="session: also print every call")
+    p.add_argument("--brief", action="store_true", help="shorter output")
+    p.add_argument("--top", type=int, default=8)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_why)
+
+    p = sub.add_parser("mcp", help="run the MCP server (stdio) so an agent can ask why tokens were spent")
+    p.set_defaults(fn=cmd_mcp)
 
     p = sub.add_parser("agents", help="subagent audit: agent files, lead vs subagent spend, brief quality")
     p.add_argument("period", nargs="?", default="month", help="today | week | month | Nd (e.g. 30d)")

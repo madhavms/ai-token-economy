@@ -5,6 +5,7 @@ and every state-changing POST must carry a per-launch token that only the served
 """
 import json
 import secrets
+from collections import defaultdict
 import threading
 import time
 import webbrowser
@@ -13,11 +14,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, config, estimate, health, logs, prices, report, route, setup
+from . import __version__, agents, analyze, config, estimate, health, logs, prices, report, route, setup
 
 WEB = Path(__file__).resolve().parent / "web"
 TOKEN = secrets.token_hex(16)
-_cache = {"at": 0, "calls": None}
+_cache = {"at": 0, "calls": None, "sum_at": 0, "sums": None}
 _lock = threading.Lock()
 
 
@@ -69,6 +70,138 @@ def summary(period, refresh=False):
     return out
 
 
+def all_summaries(force=False):
+    """Session summaries since the start of last month (disk-cached per file; 60 s in memory)."""
+    with _lock:
+        if force or _cache["sums"] is None or time.time() - _cache["sum_at"] > 60:
+            now = report.local_now()
+            since = report.month_start(report.month_start(now) - timedelta(days=1))
+            _cache.update(sum_at=time.time(), sums=analyze.summaries(since, None, config.load()["big_context"]))
+        return _cache["sums"]
+
+
+def _range(period, now):
+    from .cli import since_for
+    since = since_for(period, now)
+    until = (report.month_start(now) - timedelta(days=1)) if period == "lastmonth" else now
+    return since.date().isoformat(), until.date().isoformat()
+
+
+def _lite(s, ip=None):
+    keep = ("tool", "session", "title", "project", "cwd", "start", "end", "calls", "cost", "lead_cost", "sub_cost",
+            "main_model", "peak", "rebuilds", "compactions", "big_calls", "headline", "unit")
+    d = {k: s.get(k) for k in keep}
+    d["subagent_runs"] = len(s.get("subagents") or [])
+    d["models"] = sorted(s.get("all_models") or s.get("models") or {}, key=lambda m: -(s.get("all_models") or {}).get(m, 0))
+    if ip is not None:
+        d["period_cost"] = ip["cost"]
+        d["period_share"] = ip["share"]
+    return d
+
+
+def overview(period, tool, project=None, refresh=False):
+    cfg = config.load()
+    now = report.local_now()
+    sums = [s for s in all_summaries(refresh) if s["tool"] == tool]
+    projects = sorted({s["project"] for s in sums if s["project"]})
+    if project:
+        sums = [s for s in sums if s["project"] == project]
+    since_day, until_day = _range(period, now)
+    agg = analyze.period_report(sums, since_day, until_day)
+    unit = "$" if tool == "claude" else "cr"
+    total = agg["totals"].get(unit, 0.0)
+    month0 = report.month_start(now).date().isoformat()
+    today = now.date().isoformat()
+    # month to date, by day and model, for the budget charts (ignores the period filter on purpose)
+    mdays = defaultdict(lambda: defaultdict(float))
+    last_month = 0.0
+    lm0 = report.month_start(report.month_start(now) - timedelta(days=1)).date().isoformat()
+    for s in sums:
+        for d, mv in (s.get("day_models") or {}).items():
+            if d >= month0:
+                for m, v in mv.items():
+                    mdays[d][m] += v
+            elif lm0 <= d < month0:
+                last_month += sum(mv.values())
+    budget = cfg["claude_budget_usd"] if tool == "claude" else cfg["codex_budget_credits"]
+    spent = sum(sum(v.values()) for v in mdays.values())
+    pace = report.pace(spent, budget, now, cfg.get("workdays"))
+    pace["runout"] = pace["runout"].isoformat() if pace["runout"] else None
+    pace["today"] = sum(mdays.get(today, {}).values())
+    left_wd = max(0, pace["workdays_month"] - pace["workdays_done"])
+    pace["projected"] = spent + pace["daily_avg"] * left_wd
+    pace["last_month"] = last_month
+    names = {"big": "Calls over %dK tokens" % (cfg["big_context"] // 1000), "model": "Top-tier model premium",
+             "rebuild": "Cache rebuilt after breaks", "haiku_long": "Haiku over 100K tokens",
+             "repeat": "Same result loaded repeatedly", "startup": "Heavy startup context"}
+    fix = {"big": "Fresh session per task or phase (/clear), with a short handoff note; compact earlier.",
+           "model": "Start routine work on the everyday model; switch up on purpose for hard problems.",
+           "rebuild": analyze.CATEGORIES["rebuild"][1], "haiku_long": "Cap Haiku subagents with maxTurns and narrow briefs.",
+           "repeat": "Read it once and refer back, or read only the part that changed.",
+           "startup": analyze.CATEGORIES["startup"][1]}
+    causes = sorted(({"key": k, "label": analyze.CATEGORIES[k][0], "fix": analyze.CATEGORIES[k][1], "cost": v}
+                     for (u, k), v in agg["categories"].items() if u == unit and v > 0), key=lambda r: -r["cost"])
+    levers = sorted(({"key": k, "label": names.get(k, k), "fix": fix.get(k, ""), "cost": v}
+                     for (u, k), v in agg["levers"].items() if u == unit and v > 0), key=lambda r: -r["cost"])
+    models = sorted(({"model": m, "cost": v} for (u, m), v in agg["models"].items() if u == unit and v > 0), key=lambda r: -r["cost"])
+    projs = sorted(({"project": k, "cost": v["cost"], "sessions": v["sessions"]} for (u, k), v in agg["projects"].items() if u == unit),
+                   key=lambda r: -r["cost"])
+    items = sorted(({"label": k, "cat": v["cat"], "cat_label": analyze.CATEGORIES.get(v["cat"], ("?",))[0], "cost": v["cost"],
+                     "sessions": v["sessions"], "tokens": v["tokens"]} for (u, k), v in agg["labels"].items() if u == unit),
+                   key=lambda r: -r["cost"])[:40]
+    pdays = {d: dict(mv) for (u, d), mv in agg["days"].items() if u == unit}
+    sess = [_lite(s, {"cost": s["period_cost"], "share": s["period_share"]}) for s in agg["sessions"] if s["unit"] == unit]
+    calls_n = sum(s["calls"] * s["period_share"] for s in agg["sessions"] if s["unit"] == unit)
+    return {"now": now.isoformat(), "period": period, "since": since_day, "until": until_day, "tool": tool, "unit": unit,
+            "prices_date": prices.PRICES_DATE, "version": __version__, "config": cfg, "projects": projects, "project": project,
+            "pace": pace, "month_days": {d: dict(v) for d, v in mdays.items()},
+            "total": total, "sessions": sess, "calls": int(round(calls_n)), "causes": causes, "levers": levers,
+            "models": models, "by_project": projs, "items": items, "days": pdays,
+            "has_claude": any(s["tool"] == "claude" for s in all_summaries()),
+            "has_codex": any(s["tool"] == "codex" for s in all_summaries())}
+
+
+def session_full(tool, sid):
+    found = analyze.find_session(sid)
+    if not found:
+        return {"error": "not found"}
+    s, rows = analyze.analyze_file(found[1], found[0], config.load()["big_context"])
+    models = sorted({r["model"] for r in rows})
+    mi = {m: i for i, m in enumerate(models)}
+    s = dict(s)
+    s["call_models"] = models
+    s["rows"] = [[r["i"], r["ts"].isoformat() if r["ts"] else None, mi[r["model"]], r["prompt"], r["read"], r["new"], r["out"],
+                  round(r["cost"], 6), 1 if r["rebuild"] else 0, 1 if r["compaction"] else 0, int(r["gap"]),
+                  ",".join(sorted(set(r["tools"])))] for r in rows]
+    s["labels"] = {k: v[0] for k, v in analyze.CATEGORIES.items()}
+    return s
+
+
+def agents_report(period, directory=None):
+    from .cli import since_for
+    now = report.local_now()
+    since = since_for(period, now)
+    chk = agents.setup_check(directory) if directory else agents.setup_check()
+    sessions, runs = agents.usage(since)
+    summ = agents.summarize(sessions, runs)
+    leaks = agents.findings(sessions, runs, summ)
+    weakest = sorted([r for r in runs if r["has_brief"] and r["brief_missing"] and agents.UNSEEN not in r["brief_missing"]],
+                     key=lambda r: (-len(r["brief_missing"]), -r["cost"]))[:12]
+    cx = agents.codex_usage(since)
+    for t in cx["types"]:
+        t["models"] = sorted(t["models"])
+    return {"setup": chk, "summary": summ, "findings": [{"dollars": d, "text": t} for d, t in leaks],
+            "weakest": [{k: r[k] for k in ("type", "description", "cost", "brief_missing", "brief_chars", "start")} for r in weakest],
+            "codex": cx, "template": agents.BRIEF_TEMPLATE}
+
+
+def mcp_status():
+    cmd, args = setup._cmd_parts("mcp")
+    files, notes, commands = setup.plan_mcp()
+    return {"command": " ".join(setup._q(x) for x in [cmd] + args), "notes": notes,
+            "claude_cli": " ".join(setup._q(x) for x in (commands[0] if commands else ["claude", "mcp", "add", "--scope", "user", "tke", "--", cmd] + args))}
+
+
 def session_detail(tool, sid):
     rows = sorted((c for c in calls() if c.tool == tool and c.session == sid), key=lambda c: c.ts)
     return {"tool": tool, "session": sid, "calls": [{
@@ -111,6 +244,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, summary(q.get("period", "month"), q.get("refresh") == "1"))
             if u.path == "/api/session":
                 return self._send(200, session_detail(q.get("tool", "claude"), q.get("id", "")))
+            if u.path == "/api/overview":
+                return self._send(200, overview(q.get("period", "month"), q.get("tool", "claude"), q.get("project") or None,
+                                                q.get("refresh") == "1"))
+            if u.path == "/api/why":
+                return self._send(200, session_full(q.get("tool", "claude"), q.get("id", "")))
+            if u.path == "/api/agents":
+                return self._send(200, agents_report(q.get("period", "month"), q.get("dir") or None))
+            if u.path == "/api/mcp":
+                return self._send(200, mcp_status())
             if u.path == "/api/health":
                 plan = {}
                 for t, fn in (("claude", setup.plan_claude), ("codex", setup.plan_codex)):

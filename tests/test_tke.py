@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from token_economy import agents, estimate, hooks, logs, prices, report, route, setup, trim  # noqa: E402
+from token_economy import agents, analyze, estimate, explain, hooks, logs, mcp, prices, report, route, setup, trim  # noqa: E402
 
 
 def write_jsonl(path, rows):
@@ -335,6 +335,146 @@ class Agents(unittest.TestCase):
             self.assertIn("name: subagent-review", setup.review_skill())
 
 
+def asst(ts, mid, read=0, w5=0, out=50, model="claude-opus-5-5", blocks=None):
+    return {"type": "assistant", "timestamp": ts, "sessionId": "w1", "requestId": "q" + mid, "cwd": "/home/me/work/repo",
+            "message": {"id": mid, "model": model, "content": blocks or [{"type": "text", "text": "ok"}],
+                        "usage": {"input_tokens": 0, "cache_read_input_tokens": read, "cache_creation_input_tokens": w5,
+                                  "cache_creation": {"ephemeral_5m_input_tokens": w5, "ephemeral_1h_input_tokens": 0},
+                                  "output_tokens": out}}}
+
+
+def result(tid, text):
+    return {"type": "user", "timestamp": "2026-10-01T10:00:00Z",
+            "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tid, "content": text}]}}
+
+
+def why_transcript(home):
+    """A session with a big file read, a parallel tool call split across lines, a long break and a compaction."""
+    rows = [
+        {"type": "ai-title", "aiTitle": "Fix the cart"},
+        {"type": "user", "timestamp": "2026-10-01T10:00:00Z", "cwd": "/home/me/work/repo",
+         "message": {"role": "user", "content": "Fix the cart total please"}},
+        asst("2026-10-01T10:00:01Z", "a1", read=0, w5=20000, blocks=[
+            {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/repo/shop/cart.py"}}]),
+        result("t1", "x" * 160000),                                   # ~40K tokens
+        asst("2026-10-01T10:00:05Z", "a2", read=20000, w5=40000, blocks=[
+            {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "pytest -q"}}]),
+        result("t2", "y" * 4000),
+        asst("2026-10-01T10:00:05Z", "a2", read=20000, w5=40000, blocks=[  # same reply, second block, after a result
+            {"type": "tool_use", "id": "t3", "name": "Grep", "input": {"pattern": "total"}}]),
+        result("t3", "z" * 2000),
+        asst("2026-10-01T10:00:09Z", "a3", read=60000, w5=2000),
+        {"type": "user", "timestamp": "2026-10-01T10:30:00Z", "message": {"role": "user", "content": "and the tax"}},
+        asst("2026-10-01T10:30:01Z", "a4", read=0, w5=62500),          # 30 min later: cache rebuilt
+        {"type": "system", "subtype": "compact_boundary", "timestamp": "2026-10-01T10:31:00Z"},
+        {"type": "user", "isCompactSummary": True, "timestamp": "2026-10-01T10:31:00Z",
+         "message": {"role": "user", "content": "summary " * 500}},
+        asst("2026-10-01T10:31:05Z", "a5", read=15000, w5=3000),
+    ]
+    path = home / "projects" / "-home-me-work-repo" / "w1.jsonl"
+    write_jsonl(path, rows)
+    sub = path.with_suffix("") / "subagents"
+    write_jsonl(sub / "agent-x.jsonl", [claude_row("2026-10-02T09:00:00Z", "s1", "rs1", read=0, w5=10000,
+                                                   model="claude-haiku-5-5", side=True)])
+    (sub / "agent-x.meta.json").write_text(json.dumps({"agentType": "scoper", "description": "find the cart code"}))
+    return path
+
+
+class Why(unittest.TestCase):
+    def test_causes_add_up_and_name_the_culprits(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            path = why_transcript(home)
+            s, rows = analyze.analyze_file(path, "claude")
+            ref = sum(c.cost for c in logs.claude_file_calls(path, None, None, False))
+            self.assertEqual(s["calls"], 5)                               # the split reply counted once
+            self.assertAlmostEqual(s["lead_cost"], ref, places=9)
+            self.assertAlmostEqual(sum(s["categories"].values()), s["cost"], places=9)
+            self.assertGreater(s["sub_cost"], 0)
+            self.assertEqual((s["rebuilds"], s["compactions"]), (1, 1))
+            self.assertEqual(s["title"], "Fix the cart")
+            self.assertEqual(s["project"], "work/repo")
+            top = [i for i in s["top_items"] if i["cat"] != "startup"][0]
+            self.assertEqual((top["cat"], top["label"]), ("read", "Read repo/shop/cart.py"))
+            self.assertEqual(top["carried"], 2)                           # re-read on calls 2 and 3, then rebuilt
+            self.assertGreater(s["categories"]["rebuild"], 0)
+            keys = [f["key"] for f in s["causes"]]
+            self.assertIn("read", keys)
+            self.assertIn("model", [f["key"] for f in s["levers"]])
+            # per-day split covers the subagent's own day
+            self.assertAlmostEqual(sum(sum(v.values()) for v in s["days"].values()), s["cost"], places=9)
+            ip = analyze.in_period(s, "2026-10-02", None)
+            self.assertAlmostEqual(ip["cost"], s["sub_cost"], places=9)
+            text = explain.session_text(s, rows, calls=True)
+            self.assertIn("File reads", text)
+            self.assertIn("cache rebuilt", text)
+
+    def test_codex_rollout(self):
+        with tempfile.TemporaryDirectory() as d:
+            day = Path(d) / "sessions" / "2026" / "10" / "01"
+            tc = lambda ts, i, c: {"timestamp": ts, "type": "event_msg", "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": i, "cached_input_tokens": c, "output_tokens": 10},
+                "last_token_usage": {"input_tokens": i, "cached_input_tokens": c, "output_tokens": 10}}}}
+            path = day / "rollout-x-P.jsonl"
+            write_jsonl(path, [
+                {"type": "session_meta", "payload": {"id": "P", "source": "exec", "cwd": "/w/repo"}},
+                {"type": "turn_context", "payload": {"model": "gpt-6.1-sol"}},
+                {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "fix it"}]}},
+                tc("2026-10-01T10:00:00Z", 5000, 0),
+                {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": '{"cmd":"cat big.log"}', "call_id": "c1"}},
+                {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "c1", "output": "l" * 40000}},
+                tc("2026-10-01T10:00:03Z", 16000, 5000)])
+            s, rows = analyze.analyze_file(path, "codex", codex_all=[path])
+            self.assertEqual(s["calls"], 2)
+            self.assertAlmostEqual(sum(s["categories"].values()), s["cost"], places=6)
+            self.assertEqual(s["top_items"][0]["label"], "exec_command: cat big.log")
+            self.assertEqual(s["unit"], "cr")
+
+    def test_mcp_protocol(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ.update(CLAUDE_CONFIG_DIR=d, CODEX_HOME=os.path.join(d, "cx"), TKE_HOME=os.path.join(d, "tke"))
+            try:
+                why_transcript(Path(d))
+                init = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+                self.assertEqual(init["result"]["protocolVersion"], "2025-06-18")
+                self.assertIsNone(mcp.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
+                names = [t["name"] for t in mcp.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
+                self.assertIn("why_session", names)
+                r = mcp.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                                "params": {"name": "why_session", "arguments": {"session": "w1", "detail": "brief"}}})
+                self.assertFalse(r["result"]["isError"])
+                self.assertIn("Fix the cart", r["result"]["content"][0]["text"])
+                for name in ("budget_status", "why_period", "top_sessions", "subagent_audit"):
+                    r = mcp.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": name, "arguments": {"period": "30d"}}})
+                    self.assertFalse(r["result"]["isError"], name)
+                self.assertEqual(mcp.handle({"jsonrpc": "2.0", "id": 5, "method": "nope"})["error"]["code"], -32601)
+                out = io.BytesIO()
+                mcp.serve(io.BytesIO(b'{"jsonrpc":"2.0","id":9,"method":"ping"}\nnot json\n'), out)
+                lines = [json.loads(l) for l in out.getvalue().decode().splitlines()]
+                self.assertEqual((lines[0]["id"], lines[1]["error"]["code"]), (9, -32700))
+            finally:
+                for k in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "TKE_HOME"):
+                    os.environ.pop(k, None)
+
+    def test_mcp_registration_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ.update(CODEX_HOME=d, HOME=d, USERPROFILE=d)
+            old = Path.home
+            Path.home = classmethod(lambda cls: Path(d))
+            try:
+                Path(d, "config.toml").write_text('model = "gpt-6.1-sol"\n')
+                files, notes, cmds = setup.plan_mcp(("codex", "copilot"))
+                with redirect_stdout(io.StringIO()):
+                    setup.run(files, notes, True)
+                self.assertIn("[mcp_servers.tke]", Path(d, "config.toml").read_text())
+                cfg = json.loads(Path(d, ".copilot", "mcp-config.json").read_text())
+                self.assertEqual(cfg["mcpServers"]["tke"]["args"][-1], "mcp")
+                self.assertEqual(setup.plan_mcp(("codex", "copilot"))[0], [])   # idempotent
+            finally:
+                Path.home = old
+                os.environ.pop("CODEX_HOME", None)
+
+
 class Route(unittest.TestCase):
     def test_first_yes_wins(self):
         self.assertEqual(route.decide({"check": True, "hard": True}), "fast")
@@ -353,7 +493,8 @@ class FreshMachine(unittest.TestCase):
             for args in (["init", "--claude", "500", "--codex", "13000"], ["report"], ["report", "week", "--json"],
                          ["status"], ["statusline"], ["setup"], ["setup", "claude", "codex", "project", "--dir", d],
                          ["route", "--check"], ["estimate"], ["uninstall"], ["agents"], ["agents", "7d", "--dir", d, "--brief"],
-                         ["agents", "--json"], ["agents", "--prompt"], ["setup", "roles", "--dir", d]):
+                         ["agents", "--json"], ["agents", "--prompt"], ["setup", "roles", "--dir", d],
+                         ["why"], ["why", "week"], ["why", "30d", "--json"], ["setup", "mcp", "--tools", "codex,copilot"]):
                 r = subprocess.run([sys.executable, str(ROOT / "tke.py")] + args, env=env, cwd=d, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                 self.assertEqual(r.returncode, 0, "tke %s: %s" % (" ".join(args), r.stderr))
@@ -413,6 +554,16 @@ class UI(unittest.TestCase):
         sid = s["tools"]["claude"]["sessions"][0]["session"]
         d = json.loads(self.req("/api/session?tool=claude&id=" + sid)[1])
         self.assertEqual(len(d["calls"]), 1)
+
+    def test_overview_why_and_agents_endpoints(self):
+        o = json.loads(self.req("/api/overview?period=month&tool=claude&refresh=1")[1])
+        self.assertGreater(o["total"], 0)
+        self.assertEqual(len(o["sessions"]), 1)
+        self.assertAlmostEqual(sum(c["cost"] for c in o["causes"]), o["total"], places=6)
+        w = json.loads(self.req("/api/why?tool=claude&id=" + o["sessions"][0]["session"])[1])
+        self.assertEqual(len(w["rows"]), 1)
+        self.assertIn("summary", json.loads(self.req("/api/agents?period=month")[1]))
+        self.assertIn("mcp", json.loads(self.req("/api/mcp")[1])["command"])
 
     def test_writes_need_the_token_and_a_local_host(self):
         self.assertEqual(self.req("/api/budget", {"claude_budget_usd": 1})[0], 403)
