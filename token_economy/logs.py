@@ -7,7 +7,9 @@ Nothing leaves the machine: both tools already write these files locally.
 - Codex: <codex home>/sessions/YYYY/MM/DD/rollout-*.jsonl. token_count events carry a running
   total per session; input_tokens includes cached_input_tokens.
 """
+import atexit
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -52,10 +54,14 @@ def _files(root, pattern, since):
     return out
 
 
-def _lines(path):
+def _lines(path, needle=None):
+    """Decoded JSON lines. With ``needle``, lines that don't contain it are skipped before decoding,
+    which is where nearly all the time goes (tool results and file contents dwarf the usage lines)."""
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
+                if needle is not None and needle not in line:
+                    continue
                 if line.strip():
                     try:
                         yield json.loads(line)
@@ -65,22 +71,93 @@ def _lines(path):
         return
 
 
-# ------------------------------------------------------------------ Claude Code
-def claude_file_calls(path, since=None, project=None, subagent=None):
-    """Priced calls from one Claude Code transcript file."""
+# ------------------------------------------------------------------ row cache
+# Each transcript's usage rows (raw token counts, not costs, so a price change still applies) are kept in
+# <config>/cache/calls-v1.json keyed by path, size and mtime. A repeat run re-reads only files that changed.
+ROWS_CACHE_VERSION = 1
+_rows = {"cache": None, "dirty": False}
+USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens",
+              "speed", "inference_geo")
+
+
+def _rows_path():
+    return config.config_dir() / "cache" / ("calls-v%d.json" % ROWS_CACHE_VERSION)
+
+
+def _rows_cache():
+    if _rows["cache"] is None:
+        try:
+            data = json.loads(_rows_path().read_text(encoding="utf-8"))
+            _rows["cache"] = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            _rows["cache"] = {}
+    return _rows["cache"]
+
+
+def save_rows_cache():
+    """Write the row cache if it changed, dropping files that no longer exist."""
+    if _rows["cache"] is None:
+        return
+    cache = {k: v for k, v in _rows["cache"].items() if os.path.exists(k)}
+    if not _rows["dirty"] and len(cache) == len(_rows["cache"]):
+        return
+    p = _rows_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".%d.tmp" % os.getpid())
+        tmp.write_text(json.dumps(cache, separators=(",", ":")), encoding="utf-8")
+        os.replace(str(tmp), str(p))
+        _rows["cache"], _rows["dirty"] = cache, False
+    except OSError:
+        pass                               # a read-only config dir just means no cache
+
+
+atexit.register(save_rows_cache)
+
+
+def _claude_rows(path):
+    """De-duplicated usage rows of one transcript: [session, timestamp, model, usage, sidechain]."""
+    try:
+        st = os.stat(str(path))
+    except OSError:
+        return []
+    key, stamp = str(path), [st.st_size, st.st_mtime_ns]
+    cache = _rows_cache()
+    hit = cache.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
     seen = {}
-    for d in _lines(path):
+    for d in _lines(path, '"usage"'):
         msg = d.get("message") if isinstance(d.get("message"), dict) else None
         if not msg or d.get("type") != "assistant" or not isinstance(msg.get("usage"), dict):
             continue
         model = msg.get("model") or ""
         if model.startswith("<"):          # "<synthetic>" placeholder replies
             continue
-        key = (msg.get("id"), d.get("requestId")) if msg.get("id") else id(d)
-        seen[key] = (d, msg)               # keep the last copy of a repeated reply
-    calls = []
+        key2 = (msg.get("id"), d.get("requestId")) if msg.get("id") else id(d)
+        seen[key2] = (d, msg)              # keep the last copy of a repeated reply
+    rows = []
     for d, msg in seen.values():
         u = msg["usage"]
+        keep = {k: u[k] for k in USAGE_KEYS if u.get(k) is not None}
+        cc = u.get("cache_creation")
+        if isinstance(cc, dict):
+            keep["cache_creation"] = {k: cc[k] for k in ("ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens")
+                                      if k in cc}
+        searches = (u.get("server_tool_use") or {}).get("web_search_requests")
+        if searches:
+            keep["web_search_requests"] = searches
+        rows.append([d.get("sessionId"), d.get("timestamp"), msg.get("model"), keep, bool(d.get("isSidechain"))])
+    cache[key] = [stamp, rows]
+    _rows["dirty"] = True
+    return rows
+
+
+# ------------------------------------------------------------------ Claude Code
+def claude_file_calls(path, since=None, project=None, subagent=None):
+    """Priced calls from one Claude Code transcript file."""
+    calls = []
+    for session, stamp, model_name, u, sidechain in _claude_rows(path):
         cc = u.get("cache_creation") or {}
         write = u.get("cache_creation_input_tokens", 0) or 0
         w1h = cc.get("ephemeral_1h_input_tokens", 0) or 0
@@ -88,19 +165,19 @@ def claude_file_calls(path, since=None, project=None, subagent=None):
         inp = u.get("input_tokens", 0) or 0
         read = u.get("cache_read_input_tokens", 0) or 0
         out = u.get("output_tokens", 0) or 0
-        ts = parse_ts(d.get("timestamp"))
+        ts = parse_ts(stamp)
         if ts is None or (since and ts < since):
             continue
         speed, geo = u.get("speed"), u.get("inference_geo")
-        searches = ((u.get("server_tool_use") or {}).get("web_search_requests") or 0)
-        cost = prices.claude_cost(msg.get("model"), inp, w5, w1h, read, out, speed, geo, searches)
-        mult = prices.fast_multiplier(msg.get("model"), speed)
+        searches = u.get("web_search_requests") or 0
+        cost = prices.claude_cost(model_name, inp, w5, w1h, read, out, speed, geo, searches)
+        mult = prices.fast_multiplier(model_name, speed)
         calls.append(Call(
-            tool="claude", session=d.get("sessionId") or path.stem, project=project,
-            ts=ts, model=msg.get("model"), prompt=inp + w5 + w1h + read, read=read,
+            tool="claude", session=session or path.stem, project=project,
+            ts=ts, model=model_name, prompt=inp + w5 + w1h + read, read=read,
             w5=w5, w1h=w1h, uncached=inp, out=out, cost=cost, speed=speed, geo=geo, searches=searches,
             fast_extra=(cost - searches * prices.WEB_SEARCH) * (1 - 1 / mult) if (cost and mult > 1) else 0.0,
-            subagent=bool(d.get("isSidechain")) if subagent is None else subagent))
+            subagent=sidechain if subagent is None else subagent))
     return calls
 
 
@@ -110,6 +187,7 @@ def claude_calls(since=None, home=None):
     for path in _files(root, "*.jsonl", since):
         rel = path.relative_to(root).parts
         calls += claude_file_calls(path, since, rel[0], True if "subagents" in rel else None)
+    save_rows_cache()
     _mark_rebuilds(calls)
     return calls
 

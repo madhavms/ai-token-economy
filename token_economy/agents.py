@@ -326,7 +326,7 @@ def score_brief(prompt, agent_type="", description="", follow=True):
 def _last_text(path):
     """The subagent's final text reply: the report that went back to the lead."""
     last = ""
-    for d in logs._lines(path):
+    for d in logs._lines(path, '"assistant"'):
         if d.get("type") != "assistant":
             continue
         msg = d.get("message") or {}
@@ -340,7 +340,7 @@ def _last_text(path):
 
 def _spawns_and_lead_tools(path):
     spawns, tools = {}, defaultdict(int)
-    for d in logs._lines(path):
+    for d in logs._lines(path, '"tool_use"'):
         if d.get("type") != "assistant" or d.get("isSidechain"):
             continue
         for c in (d.get("message") or {}).get("content") or []:

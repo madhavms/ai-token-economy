@@ -16,6 +16,22 @@ sys.path.insert(0, str(ROOT))
 from token_economy import agents, analyze, estimate, explain, hooks, logs, mcp, prices, report, route, setup, trim  # noqa: E402
 
 
+_MODULE_HOME = tempfile.TemporaryDirectory()
+_OLD_TKE_HOME = os.environ.get("TKE_HOME")
+
+
+def setUpModule():
+    os.environ["TKE_HOME"] = _MODULE_HOME.name    # caches and settings never touch the real config dir
+
+
+def tearDownModule():
+    if _OLD_TKE_HOME is None:
+        os.environ.pop("TKE_HOME", None)
+    else:
+        os.environ["TKE_HOME"] = _OLD_TKE_HOME
+    _MODULE_HOME.cleanup()
+
+
 def write_jsonl(path, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -76,6 +92,36 @@ class ClaudeLogs(unittest.TestCase):
                 claude_row("2026-10-01T10:20:00Z", "m2", "r2", read=30000, w1h=1000)])
             self.assertFalse(any(c.rebuild for c in logs.claude_calls(home=home)))
 
+
+    def test_row_cache_is_reused_refreshed_and_pruned(self):
+        with tempfile.TemporaryDirectory() as d:
+            home, f = Path(d), Path(d) / "projects" / "-repo" / "s1.jsonl"
+            write_jsonl(f, [claude_row("2026-10-01T10:00:00Z", "m1", "r1", read=0, w5=30000)])
+            first = logs.claude_calls(home=home)
+            cache = json.loads(logs._rows_path().read_text())
+            stamp, rows = cache[str(f)]
+            self.assertEqual(rows[0][3]["cache_creation_input_tokens"], 30000)   # raw tokens, priced on read
+            real = logs._lines
+            logs._lines = lambda *a, **k: (_ for _ in ()).throw(AssertionError("re-read an unchanged file"))
+            try:
+                again = logs.claude_calls(home=home)
+            finally:
+                logs._lines = real
+            self.assertEqual([c.cost for c in again], [c.cost for c in first])
+            with open(f, "a") as fh:                                             # the session grows
+                fh.write(json.dumps(claude_row("2026-10-01T10:01:00Z", "m2", "r2", read=30000, w5=500)) + "\n")
+            self.assertEqual(len(logs.claude_calls(home=home)), 2)
+            f.unlink()
+            logs.claude_calls(home=home)
+            self.assertNotIn(str(f), json.loads(logs._rows_path().read_text()))
+
+    def test_lines_without_usage_are_skipped_before_decoding(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "t.jsonl"
+            f.write_text('{"type": "user", "message": "x"}\nnot json at all\n'
+                         + json.dumps(claude_row("2026-10-01T10:00:00Z", "m1", "r1", read=10)) + "\n")
+            self.assertEqual(len(list(logs._lines(f, '"usage"'))), 1)
+            self.assertEqual(len(logs.claude_file_calls(f)), 1)
 
 class CodexLogs(unittest.TestCase):
     def test_running_totals_become_deltas(self):
@@ -453,8 +499,9 @@ class Why(unittest.TestCase):
                 lines = [json.loads(l) for l in out.getvalue().decode().splitlines()]
                 self.assertEqual((lines[0]["id"], lines[1]["error"]["code"]), (9, -32700))
             finally:
-                for k in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "TKE_HOME"):
+                for k in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
                     os.environ.pop(k, None)
+                os.environ["TKE_HOME"] = _MODULE_HOME.name
 
     def test_mcp_registration_files(self):
         with tempfile.TemporaryDirectory() as d:
