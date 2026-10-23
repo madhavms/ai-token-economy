@@ -315,6 +315,24 @@ def fig_sub():
     return svg(880, 236, b, "A subagent starts with a small fresh context and returns only its report")
 
 
+def fig_vscode():
+    rows = [("frozen", "VS Code + Copilot system prompt", "always", "start"),
+            ("frozen", "Tool catalog: built-in + MCP", "always; Configure Tools trims it", "start"),
+            ("frozen", ".github/copilot-instructions.md", "always, in this repo", "start"),
+            ("frozen", "AGENTS.md / CLAUDE.md", "always, when enabled in settings", "start"),
+            ("frozen", "~/.copilot/copilot-instructions.md", "you, every repo", "start"),
+            ("data", "*.instructions.md with applyTo", "when it edits a matching file", "demand"),
+            ("data", "#file, #codebase, prompt files", "when you attach or run them", "demand")]
+    b = [icon("githubcopilot", 776, 12, 26), t(810, 30, "Copilot", "t-b")]
+    for i, (cls, name, when, kind) in enumerate(rows):
+        y = 48 + i * 42
+        b += [r(10, y, 330, 32, cls), t(22, y + 21, name, "t-m"), t(356, y + 21, when, "t-s"),
+              ln(668, y + 16, 752, y + 16, "ln" if kind == "start" else "ln-d", "ah" if kind == "start" else "ah-d")]
+    b += [r(756, 48, 116, 284, "box"), t(814, 180, "the", "t-s", "middle"), t(814, 198, "context", "t-b", "middle"),
+          t(814, 216, "every request", "t-s", "middle")]
+    return svg(880, 346, b, "What Copilot in VS Code puts in the context, and when")
+
+
 def fig_where():
     left = ["CLAUDE.md, CLAUDE.local.md, rules", "settings.json, agent files, skills", "Auto memory (MEMORY.md)",
             "Transcripts: ~/.claude/projects/…/*.jsonl", "Codex logs: ~/.codex/sessions/…"]
@@ -378,7 +396,7 @@ def icons_defs():
 
 FIGS = {"dna": fig_dna, "big": fig_big, "tokens": fig_tokens, "calls": fig_calls, "cache": fig_cache, "loop": fig_loop,
         "anatomy": fig_anatomy, "claudemd": fig_claudemd, "sub": fig_sub, "where": fig_where, "glue": fig_glue,
-        "scale": fig_scale}
+        "scale": fig_scale, "vscode": fig_vscode}
 
 
 def toy_table():

@@ -50,7 +50,7 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
   <h1>The Basics Under the Bill</h1>
   <p class="lede">A coding agent's bill is not a mystery and not a flat fee. It is a handful of simple ideas multiplied together: a model that remembers nothing, text counted in tokens, a conversation sent again on every call, a cache that makes the repeat cheap, and instructions and helpers that ride along. This page builds those ideas one at a time, on one small task you can trace by hand, with every number measured.</p>
   <div class="tblock">
-    <div><b>What it covers</b>Models, tokens, API calls, prices, the prompt cache, agents, CLAUDE.md, subagents, and where everything lives</div>
+    <div><b>What it covers</b>Models, tokens, API calls, prices, the prompt cache, agents, CLAUDE.md, subagents, where everything lives, and Copilot in VS Code</div>
     <div><b>Measured with</b>Claude Code {{claude_version}} on {{date}}, Sonnet 5.5 and Haiku 5.5; prices as of {{prices_date}}</div>
     <div><b>Leads to</b><a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy</a> · <a href="https://github.com/madhavms/ai-token-economy">the tke tool</a></div>
     <div><b>Time</b>About 25 minutes</div>
@@ -257,15 +257,56 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
   </div>
 </section>
 
+<section id="copilot">
+  <div class="beat"><span>13 · Copilot in VS Code</span></div>
+  <h2>The same loop, billed in AI credits</h2>
+  <p>Copilot Chat in VS Code (ask, edit, agent and plan modes) is the same machine as everything above: a model with no memory, a harness (VS Code and the Copilot Chat extension) that re-sends the conversation on every request, tools, a prompt cache and a context window. Only the bill and the file names differ.</p>
+  <ul>
+    <li><b>The unit is the GitHub AI credit.</b> Since 1 June 2026, chat, agent and CLI usage is charged per token at each model's rate and converted at <b>1 credit = $0.01</b>. For Claude models the rates are the same as Anthropic's list: Opus 5.5 is $4 input, $0.20 cached input, $5 cache write and $20 output per million tokens. GPT models have their own table.</li>
+    <li><b>Allowances:</b> Copilot Business includes 1,900 credits ($19) per user per month and Enterprise 3,900 ($39), pooled across the organisation; usage beyond the pool costs $0.01 per credit. Annual Pro and Pro+ plans bought before the change stay on the old <i>premium requests</i> (one request per prompt × a model multiplier) until the plan expires.</li>
+    <li><b>Code completions and next edit suggestions are free</b> on paid plans. Chat, agent mode, the CLI and code review are what spend credits.</li>
+  </ul>
+  <figure class="fig">
+    {{fig:vscode}}
+    <figcaption>FIG 12 · What VS Code puts in the context. Hatched rows load on every request; blue rows only when they apply. Instruction files are additive, so a repo with copilot-instructions.md, AGENTS.md and CLAUDE.md can send all three. A fresh chat's context meter often starts at 30% to 40% already used: system instructions, tool definitions and space reserved for the reply.</figcaption>
+  </figure>
+  <h3>Where to see what it cost</h3>
+  <ul>
+    <li><b>One reply:</b> hover over the response footer for input, cached input and output tokens per model.</li>
+    <li><b>One session:</b> the context control in the chat input opens the session popover: total credits and cumulative context.</li>
+    <li><b>The month:</b> the Copilot status dashboard in the Status Bar shows the share of your monthly allowance used.</li>
+    <li><b>Deeper:</b> the Agent Debug Logs summary (token totals), the Cache Explorer (cache hit rate) and <code>/chronicle:cost-tips</code>.</li>
+  </ul>
+  <h3>The levers, in VS Code terms</h3>
+  <ul>
+    <li><b>New chat per task</b> (⌘N on Mac, Ctrl+N on Windows); <code>/compact</code> when a long one must continue; <code>/fork</code> to try an alternative without rebuilding context.</li>
+    <li><b>Fewer tools:</b> the Configure Tools button, and a narrow <code>tools</code> list in custom agents. Every enabled tool, MCP ones included, is in the context of every request.</li>
+    <li><b>Keep junk out of search:</b> <code>search.exclude</code> and <code>files.exclude</code> for build output and generated files; search snippets count even when the file isn't opened.</li>
+    <li><b>Pick the model on purpose:</b> Auto as the everyday default, a strong model to plan, then custom agents in <code>.github/agents/*.agent.md</code> with a cheaper <code>model:</code> for the bounded tasks. <code>tke setup roles</code> writes an implementer, scoper and reviewer there.</li>
+  </ul>
+  <div class="trace"><table>
+    <thead><tr><th></th><th>Claude Code</th><th>Codex</th><th>Copilot in VS Code</th></tr></thead>
+    <tbody>
+      <tr><td><b>Billing unit</b></td><td>$ (API) or plan limits + usage credits</td><td>Codex credits</td><td>GitHub AI credits, $0.01 each</td></tr>
+      <tr><td><b>Standing instructions</b></td><td>CLAUDE.md (+ AGENTS.md if no CLAUDE.md)</td><td>AGENTS.md</td><td>.github/copilot-instructions.md, AGENTS.md, CLAUDE.md, *.instructions.md</td></tr>
+      <tr><td><b>Subagents / roles</b></td><td>.claude/agents/*.md, <code>model:</code></td><td>.codex/agents/*.toml, <code>model</code></td><td>.github/agents/*.agent.md, <code>model:</code></td></tr>
+      <tr><td><b>See a session's cost</b></td><td><code>/usage</code>, <code>tke why</code></td><td><code>/status</code>, <code>tke why</code></td><td>session popover in the chat input</td></tr>
+      <tr><td><b>Speed premium</b></td><td>fast mode: 2× Opus</td><td>Fast 2×, Ultrafast 6×</td><td>fast-mode models priced separately (preview)</td></tr>
+    </tbody>
+  </table></div>
+  <p><code>tke why</code> reads Claude Code and Codex logs. VS Code's local chat files didn't record token counts in the versions checked for this page, so for Copilot use the session popover and GitHub's billing page; <code>tke</code>'s MCP server can still be added to VS Code (<i>MCP: Add Server</i>) for the Claude Code and Codex numbers.</p>
+</section>
+
 <section id="confusions">
   <div class="beat"><span>Common confusions</span></div>
-  <h2>Eight things that sound right and aren't</h2>
+  <h2>Nine things that sound right and aren't</h2>
   <div class="confusions">
     <div><span class="myth">"The model remembers our conversation."</span><span>It remembers nothing. The harness keeps the conversation and re-sends all of it on every call; that repeat is most of the bill.</span></div>
     <div><span class="myth">"The prompt cache is on my laptop."</span><span>It is on the provider's servers, per organisation, and lasts minutes. What's on your laptop are transcripts and settings.</span></div>
     <div><span class="myth">"A token is a word."</span><span>English averages {{en_tpw}} tokens per word here, and code packs fewer characters into each token than prose.</span></div>
     <div><span class="myth">"A long CLAUDE.md costs a fortune on every call."</span><span>Cached, it is cheap per call. The real costs are weaker adherence and the full re-write after every rebuild or edit.</span></div>
     <div><span class="myth">"Switching to a cheaper model halfway saves money."</span><span>The new model has a cold cache, so the whole history is written again at its write price. Choose the model when you start.</span></div>
+    <div><span class="myth">"Copilot's autocomplete eats my credits."</span><span>Code completions and next edit suggestions are free on paid plans. Chat, agent mode, the CLI and code review are what spend credits.</span></div>
     <div><span class="myth">"Fast mode is just a nicer setting."</span><span>It doubles every Opus rate, is paid from usage credits even when plan usage is left, and stays on for new sessions until you turn it off.</span></div>
     <div><span class="myth">"Subagents always save tokens."</span><span>On the toy, the subagent version cost {{sub_vs}} more. They pay off for big side jobs on cheaper models.</span></div>
     <div><span class="myth">"Output is a small part of the bill."</span><span>Output is 5× the input price, and thinking counts as output.</span></div>
@@ -309,6 +350,7 @@ svg .viz-line.v1{stroke:var(--viz-1)} svg .viz-line.v2{stroke:var(--viz-2)}
     <li>Anthropic, <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing</a>: per-model rates, the Haiku 5.5 100K step, fast mode, data residency and web search fees. Claude Code docs, <a href="https://code.claude.com/docs/en/fast-mode">Fast mode</a>: usage credits, persistence, the mid-session cache cost. OpenAI, <a href="https://learn.chatgpt.com/docs/pricing">Codex pricing</a>: Fast and Ultrafast multipliers.</li>
     <li>Claude Code docs: <a href="https://code.claude.com/docs/en/memory">How Claude remembers your project</a> (CLAUDE.md locations, load order, 200-line advice, imports, comments, AGENTS.md, auto memory), <a href="https://code.claude.com/docs/en/sub-agents">Subagents</a> (fresh context, what loads, model order, built-in agents), <a href="https://code.claude.com/docs/en/prompt-caching">Prompt caching in Claude Code</a> (TTL by billing mode, <code>promptCacheTtl</code>). Checked {{date}}.</li>
     <li>OpenAI, <a href="https://learn.chatgpt.com/docs/agent-configuration/subagents">Codex subagents</a> and GitHub, <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli">Copilot CLI custom agents</a>: the same loop and subagent ideas in the other harnesses.</li>
+    <li>GitHub Docs: <a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing">Models and pricing for GitHub Copilot</a> (per-token rates, 1 credit = $0.01, completions free), <a href="https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-organizations-and-enterprises">Usage-based billing for organizations</a> (1,900 / 3,900 credits per user), <a href="https://docs.github.com/en/copilot/reference/copilot-billing/request-based-billing-legacy/copilot-requests">premium requests (legacy)</a>. VS Code docs: <a href="https://code.visualstudio.com/docs/agents/guides/optimize-usage">Optimize AI credit usage</a>, <a href="https://code.visualstudio.com/docs/copilot/customization/custom-instructions">Custom instructions</a>. The 30% to 40% starting context: <a href="https://github.com/orgs/community/discussions/188691">GitHub community discussion</a>. Checked {{date}}.</li>
     <li>Logos: <a href="https://simpleicons.org">simple-icons</a> 16.35.0 (CC0), used only to name the products.</li>
   </ul>
   <div class="next"><span>Next: <a href="https://madhavms.github.io/knowledge-graph/ai-engineering/agents-in-practice/04-ai-token-economy.html">AI Token Economy →</a></span><span>Then measure your own: <code>tke why week</code></span></div>

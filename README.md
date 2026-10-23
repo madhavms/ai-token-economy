@@ -247,6 +247,24 @@ Thresholds are environment variables: `TKE_READ_MAX_BYTES`, `TKE_SLEEP_MAX_SEC`,
 
 - Appends short token rules to `CLAUDE.md` and `AGENTS.md`, and adds a `SPEC.md` template: files, out of scope, the command that proves it works.
 
+## Copilot in VS Code
+
+Copilot Chat in VS Code runs the same loop and bills the same tokens: since 1 June 2026, chat, agent mode and the CLI
+are charged per token at each model's rate (the Claude rates equal Anthropic's list prices) and converted to GitHub AI
+credits at $0.01 each. Business includes 1,900 credits per user per month, Enterprise 3,900. Code completions and next
+edit suggestions are free on paid plans.
+
+What `tke` does for it today:
+
+- `tke setup roles --dir <repo>` writes `.github/agents/implementer.agent.md`, `scoper.agent.md` and `reviewer.agent.md`
+  with a `model:` per role, and `tke agents --dir <repo>` checks them.
+- The MCP server works in VS Code: Command Palette > *MCP: Add Server* > *Command (stdio)* with the command
+  `tke setup mcp` prints.
+- `tke why` doesn't read Copilot sessions: VS Code's local chat files didn't record token counts in the versions checked.
+  Use the session popover in the chat input (total credits) and the response-footer hover (tokens per reply).
+
+The basics page has a Copilot section: what VS Code puts in the context, where to see the cost, and the levers.
+
 ## Settings that change the price
 
 `tke` prices every call with the settings that call actually ran under:
