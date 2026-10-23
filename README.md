@@ -4,26 +4,32 @@
 
 It runs offline, has no dependencies (Python 3.8+ standard library), and **never calls a model, so it spends zero tokens.**
 
-Example output (illustrative numbers):
+![The tke dashboard on a made-up month of Claude Code and Codex logs](docs/media/tke-ui.gif)
 
-```
-> python tke.py report
-Claude  $410.00 of $500.00 this month   #######################.....
-        $41.00 a workday on average, $22.73 lasts the month  (1.8x the pace that lasts)
-        at this rate it runs out on Fri 16 Oct
+<sub>Recorded by `demo/record.py` in Docker on made-up logs (`demo/make_logs.py`); no real usage is shown.</sub>
 
-Where the Claude money went (month, 4,000 calls)
-  re-reading the prompt (cache reads)               $190.00   46%
-  new tokens written / uncached input               $130.00   32%
-  output and thinking                                $90.00   22%
-    of which: rebuilds after breaks, avoidable       $28.00    7%
-    calls with a prompt over 150k tokens            $310.00   76%
-  -> Cache rebuilds after breaks: set "promptCacheTtl": "1h" ...
-  -> Big contexts: /clear between tasks, one fresh session per phase ...
+## What actually saves money (measured)
 
-Most expensive sessions (month)
-    $165.00  claude 1700 calls  peak  950k  ...  big context, 14 cache rebuilds, long session
-```
+These numbers come from real Claude Code runs (`claude -p`) on a small practice repo, three runs per cell, each in
+its own sandboxed folder. Every run is checked: tests must pass, a hidden test must pass, or the answer must be right.
+Full tables: [bench/RESULTS.md](bench/RESULTS.md). Re-run them with `python3 bench/run.py` (about $5 at list price).
+
+| Task (all runs passed) | Haiku 5.5 | Sonnet 5.5 | Opus 5.5 |
+|---|---:|---:|---:|
+| Fix a cents-rounding bug | $0.006 | $0.063 | $0.144 |
+| Add a feature with a test | $0.007 | $0.089 | $0.240 |
+| Answer a "where is X decided" question | $0.003 | $0.043 | $0.097 |
+
+- **The model is the lever.** For work a check can prove (tests, a one-line answer), Haiku did the same three
+  tasks for about 8% of Sonnet's cost and passed every time; Opus cost 2.5x Sonnet for the same result.
+  `tke route` (and the `route_task` MCP tool) picks that lane for you.
+- **On short tasks, the templates don't move the bill.** Token rules, hooks and subagent roles all landed within
+  about ±10% of the bare setup on Sonnet, which is run-to-run noise for tasks that cost under ten cents. They are
+  aimed at long sessions (big reads, bloated contexts, breaks), and they aren't sold here as more than that.
+- **The 1-hour cache setting only matters if you pay by the token.** Signed in with a Claude subscription, Claude
+  Code already writes the 1-hour cache: after a 6 min 40 s break the second message read its 19.8K-token context back
+  from cache with or without `"promptCacheTtl": "1h"` ($0.005 either way, `bench/cache_ttl.py`). On an API key or
+  usage credits the default is 5 minutes, which is what the setting is for; that case isn't measured here.
 
 The ideas behind it, with sources and diagrams: **[AI Token Economy](https://madhavms.github.io/knowledge-graph/ai-engineering/ai-token-economy.html)**. In short: a coding agent re-sends the whole conversation on every call, so the bill is set by how big that conversation gets, whether it is read from the prompt cache, and which model reads it.
 
@@ -33,6 +39,9 @@ bill, with diagrams and numbers measured with the real Claude Code CLI. Open it 
 (`tke ui` → *Learn the basics*). `docs/basics/measure.py` re-measures it; `docs/basics/build.py` rebuilds it.
 
 ## Quick start
+
+![tke status, report and why on made-up logs](docs/media/tke-cli.gif)
+
 
 Works the same on Windows, macOS and Linux. You need Python 3.8 or newer and git; nothing else is installed.
 
@@ -111,6 +120,13 @@ python tke.py setup mcp --apply    # register with Claude Code (claude mcp add),
 | `why_period` | A period by cause, lever, model and project, with the costliest sessions. |
 | `top_sessions` | The costliest sessions in a period, each with its main reason. |
 | `subagent_audit` | Agent files, lead against subagent spend, the weakest briefs. |
+| `session_health` | Before you continue: context size, whether the prompt cache has gone cold, what the next message costs warm vs cold, and whether starting fresh is cheaper. |
+| `route_task` | The cheapest lane for a job (three yes/no questions), with the command to start it. |
+| `estimate_session` | A session's cost before it runs, for any priced model. |
+
+Three prompts come with it and show up as slash commands where the agent supports MCP prompts: `cost-check`
+(this session's cost and whether to restart), `budget` (pace and the biggest levers) and `plan-task` (pick the lane
+and price the work before starting).
 
 In VS Code: Command Palette > *MCP: Add Server* > *Command (stdio)*, and paste the command `tke setup mcp` prints.
 
@@ -302,10 +318,27 @@ The figures are estimates from local logs. On a subscription they are the API-eq
 4. Use the frontier models (Fable, GPT-6 Astra) on purpose, for one hard problem.
 5. Local models (Ollama) are an overflow tier: on a laptop CPU they take minutes to read an agent's prompt. Run `tke bench` to see your machine. Keep company code off cloud-hosted and free model tiers.
 
+## Demo and recordings
+
+```bash
+python3 demo/make_logs.py /tmp/tke-demo     # a made-up month of Claude Code and Codex logs
+CLAUDE_CONFIG_DIR=/tmp/tke-demo/claude CODEX_HOME=/tmp/tke-demo/codex TKE_HOME=/tmp/tke-demo/tke python3 tke.py ui
+docker build -f demo/Dockerfile -t tke-demo . && docker run --rm -v "$PWD/docs/media:/out" tke-demo
+```
+
+The last line re-records everything in `docs/media` (the GIFs, screenshots in light and dark, and the CLI sample)
+with Playwright and ffmpeg inside the container, so the recording is the same on every machine.
+
 ## Development
 
 ```bash
 python -m unittest discover -s tests -v
+python3 bench/run.py --arms baseline,rules --tasks fix --reps 1    # a cheap benchmark smoke run
+python3 bench/summarize.py                                         # rebuild bench/RESULTS.md
 ```
+
+`tke` reads logs fast: lines without usage are skipped before they are decoded, and each file's usage rows are
+cached by size and modification time, so a repeat `tke report` re-reads only the sessions that changed (on 1.1 GB of
+logs: 1.9 s cold, 0.17 s warm).
 
 MIT licensed. Not affiliated with Anthropic or OpenAI.

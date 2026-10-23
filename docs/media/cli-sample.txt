@@ -1,0 +1,67 @@
+$ tke status
+Claude today $0.00 of $1.36 ($1.36 left) · month $27.81 of $30.00 · runs out 27 Oct
+Codex  today 0 cr of 7 cr (7 cr left) · month 126 cr of 150 cr · runs out 29 Oct
+
+$ tke report
+AI token economy · Fri 23 Oct 2026 · prices as of 2026-10-13 · API-equivalent list prices
+
+Claude  $27.81 of $30.00 this month   ##########################..
+        $1.64 a workday on average, $1.36 lasts the month  (1.2x the pace that lasts)
+        at this rate it runs out on Tue 27 Oct
+
+Codex   126 cr of 150 cr this month   ########################....
+        7 cr a workday on average, 7 cr lasts the month  (1.1x the pace that lasts)
+        at this rate it runs out on Thu 29 Oct
+
+Last 7 days
+  Mon 19 Oct   Claude    $3.28   Codex      14 cr
+  Tue 20 Oct   Claude    $1.18   Codex       1 cr
+  Wed 21 Oct   Claude    $0.41   Codex       0 cr
+  Thu 22 Oct   Claude    $0.88   Codex      15 cr
+
+Where the Claude money went (month, 1183 calls)
+  re-reading the prompt (cache reads)                 $8.50   31%
+  new tokens written / uncached input                $13.19   47%
+  output and thinking                                 $6.12   22%
+    of which: rebuilds after breaks, avoidable        $4.29   15%
+    calls with a prompt over 150k tokens              $3.47   12%
+    frontier models (Fable, Astra)                    $0.00    0%
+    subagents                                         $0.07    0%
+    fast mode premium (over standard)                 $0.37    1%
+  -> Cache rebuilds after breaks: on an API key or usage credits set "promptCacheTtl": "1h" (tke setup claude does; a Claude subscription already gets the 1-hour cache), and /clear before a longer break instead of coming back to a cold, big session.
+
+Where the Codex money went (month, 343 calls)
+  re-reading the prompt (cache reads)                 24 cr   19%
+  new tokens written / uncached input                 79 cr   62%
+
+$ tke why week --brief
+Claude Code · week · $5.75 across 6 sessions
+
+Where it went (add up to the total)
+  File reads                              $1.42   25%  ████············
+  Cache rebuilt (break or switch)         $1.40   24%  ████············
+  Output and thinking                     $1.25   22%  ███·············
+  Startup context                         $0.93   16%  ███·············
+  Command output                          $0.56   10%  ██··············
+  Search results                          $0.13    2%  ················
+
+Levers (dollars at stake; they overlap)
+  Cache rebuilt after breaks                            $1.40   24%
+  The same result loaded repeatedly                     $0.90   16%
+  Top-tier model premium (vs the everyday model)        $0.56   10%
+  Fast mode premium (over standard speed)               $0.37    7%
+  Calls over 150K tokens                                $0.17    3%
+
+By model
+  sonnet-5-5                              $4.99   87%
+  opus-5-5                                $0.75   13%
+
+Costliest sessions (cost inside the period; * = the session also ran outside it)
+      $2.07  67ff32fe Upgrade the date picker            Breaks: $0.86 re-writing an expired cache 3 times
+      $1.21  f30b9c45 Backfill September events          Model choice: $0.56 more than sonnet-5-5 would cost for the same tokens
+      $1.18  cd85cc3a Crash on the login screen          Breaks: $0.36 re-writing an expired cache 1 time
+      $0.57  30bd935d Fix the VAT rounding on invoices   File reads: $0.13 (23%)
+      $0.41  527628c2 Crash on the login screen          Output and thinking: $0.14 (33%)
+      $0.32  e0a8ed45 Crash on the login screen          Output and thinking: $0.09 (30%)
+
+Codex · week · 29 cr across 3 sessions
