@@ -7,7 +7,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.12"]
+        exclude:                     # ubuntu-latest is Ubuntu 26.04 since 2026-10-19: no Python 3.9 build there
+          - os: ubuntu-latest
+            python: "3.9"
         include:                     # the oldest supported Python
+          - os: ubuntu-24.04
+            python: "3.9"
           - os: windows-latest
             python: "3.8"
           - os: ubuntu-22.04
