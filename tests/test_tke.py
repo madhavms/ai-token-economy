@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -605,6 +606,34 @@ class Route(unittest.TestCase):
         self.assertEqual(route.decide({"check": False, "decided": True}), "workhorse")
         self.assertEqual(route.decide({"hard": True}), "frontier")
         self.assertEqual(route.decide({}), "strong")
+
+
+class Bench(unittest.TestCase):
+    """The template benchmark's trial builder and checker, without calling a model."""
+
+    def test_arms_build_and_checker_tells_right_from_wrong(self):
+        sys.path.insert(0, str(ROOT / "bench"))
+        import run as bench_run
+        for arm in bench_run.ARMS:
+            base, repo = bench_run.build_trial(arm, "fix", 1)
+            try:
+                md = (repo / "CLAUDE.md").read_text()
+                self.assertEqual("tke:token-rules" in md, arm in ("rules", "all"), arm)
+                self.assertEqual((repo / ".claude" / "agents" / "scoper.md").exists(), arm in ("subagents", "all"), arm)
+                self.assertGreater((repo / "logs" / "app.log").stat().st_size, 1000000)
+            finally:
+                shutil.rmtree(str(base), ignore_errors=True)
+        base, repo = bench_run.build_trial("baseline", "fix", 1)
+        try:
+            before = {"tests": bench_run.tree_hash(repo, "tests"), "invoicing": bench_run.tree_hash(repo, "invoicing")}
+            self.assertFalse(bench_run.check("fix", repo, "", before)["passed"])     # the planted bug fails
+            bench_run._fix_bug(repo)
+            self.assertTrue(bench_run.check("fix", repo, "", before)["passed"])
+            before["invoicing"] = bench_run.tree_hash(repo, "invoicing")             # the question task changes no code
+            self.assertTrue(bench_run.check("question", repo, "30 days: grace_days() in invoicing/customers.py", before)["passed"])
+            self.assertFalse(bench_run.check("question", repo, "10 days (config.py)", before)["passed"])
+        finally:
+            shutil.rmtree(str(base), ignore_errors=True)
 
 
 class FreshMachine(unittest.TestCase):

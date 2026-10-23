@@ -5,3 +5,10 @@ build/
 dist/
 .venv/
 uv.lock
+
+# benchmark scratch: run logs carry local paths; streams are large
+bench/results/*.log
+bench/results/streams/
+bench/results/smoke-*
+bench/results/diag-*
+bench/results/cache-ttl-smoke.jsonl

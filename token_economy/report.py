@@ -132,8 +132,9 @@ def daily(calls, days=7, now=None):
 
 
 TIPS = {
-    "rebuild": "Cache rebuilds after breaks: set \"promptCacheTtl\": \"1h\" (tke setup claude does), "
-               "or /clear before a long break instead of coming back to a cold, big session.",
+    "rebuild": "Cache rebuilds after breaks: on an API key or usage credits set \"promptCacheTtl\": \"1h\" (tke setup "
+               "claude does; a Claude subscription already gets the 1-hour cache), and /clear before a longer break "
+               "instead of coming back to a cold, big session.",
     "fat": "Big contexts: /clear between tasks, one fresh session per phase (spec, plan, build, review), "
            "and hand wide searches to the Explore subagent.",
     "frontier": "Frontier models: use Fable or GPT-6 Astra on purpose for one hard problem, then switch back "

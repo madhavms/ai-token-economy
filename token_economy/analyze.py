@@ -50,8 +50,9 @@ CATEGORIES = OrderedDict([
     ("compact", ("Compacted summary", "")),
     ("output", ("Output and thinking", "Lower effort for routine work (medium, or low for chores); thinking is billed as output.")),
     ("rebuild", ("Cache rebuilt (break or switch)", "The whole prompt was written again: after a break longer than the cache "
-                 "lifetime, or after switching model or fast mode mid-session. Set a 1-hour cache (promptCacheTtl), "
-                 "/clear before a long break, and pick the model and speed when the session starts.")),
+                 "lifetime, or after switching model or fast mode mid-session. On an API key or credits set a 1-hour "
+                 "cache (promptCacheTtl; subscriptions already have it), /clear before a longer break, and pick the "
+                 "model and speed when the session starts.")),
     ("subagents", ("Subagents' own work", "Run search and scoping subagents on a small model with a turn cap (tke agents).")),
 ])
 
