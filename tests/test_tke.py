@@ -503,6 +503,38 @@ class Why(unittest.TestCase):
                     os.environ.pop(k, None)
                 os.environ["TKE_HOME"] = _MODULE_HOME.name
 
+    def test_mcp_pre_spend_tools_and_prompts(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.environ.update(CLAUDE_CONFIG_DIR=d, CODEX_HOME=os.path.join(d, "cx"))
+            try:
+                why_transcript(Path(d))
+                call = lambda name, args: mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                                      "params": {"name": name, "arguments": args}})["result"]
+                r = call("session_health", {"session": "w1"})
+                self.assertFalse(r["isError"], r)
+                text = r["content"][0]["text"]
+                self.assertIn("COLD", text)                                   # the fixture's last call is long ago
+                self.assertIn("Advice:", text)
+                self.assertIn("Lane: FAST", call("route_task", {"check": True})["content"][0]["text"])
+                self.assertIn("Lane: STRONG", call("route_task", {})["content"][0]["text"])
+                est = call("estimate_session", {"model": "claude-sonnet-5-5", "calls": 10, "start_tokens": 20000,
+                                                "end_tokens": 40000, "output_tokens": 500})
+                self.assertFalse(est["isError"], est)
+                self.assertIn("10 calls", est["content"][0]["text"])
+                self.assertTrue(call("estimate_session", {"model": "no-such-model"})["isError"])
+                init = mcp.handle({"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {}})
+                self.assertIn("prompts", init["result"]["capabilities"])
+                names = [p["name"] for p in mcp.handle({"jsonrpc": "2.0", "id": 3, "method": "prompts/list"})["result"]["prompts"]]
+                self.assertEqual(names, ["cost-check", "budget", "plan-task"])
+                got = mcp.handle({"jsonrpc": "2.0", "id": 4, "method": "prompts/get",
+                                  "params": {"name": "plan-task", "arguments": {"task": "rename a field"}}})["result"]
+                self.assertIn("rename a field", got["messages"][0]["content"]["text"])
+                bad = mcp.handle({"jsonrpc": "2.0", "id": 5, "method": "prompts/get", "params": {"name": "plan-task"}})
+                self.assertEqual(bad["error"]["code"], -32602)
+            finally:
+                for k in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
+                    os.environ.pop(k, None)
+
     def test_mcp_registration_files(self):
         with tempfile.TemporaryDirectory() as d:
             os.environ.update(CODEX_HOME=d, HOME=d, USERPROFILE=d)
